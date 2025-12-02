@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 17 100% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 28 100% 95%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 17 100% 59%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+    --bitcoin-orange: 25 98% 54%;
+    --mpesa-green: 142 71% 45%;
+    --dark-navy: 220 39% 11%;
+  }
+  .dark {
+    --background: 220 20% 14%;
+    --foreground: 210 40% 98%;
+    --card: 220 20% 18%;
+    --card-foreground: 210 40% 98%;
+    --popover: 220 20% 16%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 17 100% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 18% 24%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 18% 22%;
+    --muted-foreground: 215 20% 70%;
+    --accent: 220 18% 26%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 18% 28%;
+    --input: 220 18% 24%;
+    --ring: 17 100% 59%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
