@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/MockAuthContext";
+import { useBtcRate, btcToKes } from "@/hooks/useBtcRate";
 import { Bitcoin, Copy, Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft, RefreshCw, Zap, QrCode } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { QRCodeSVG } from "qrcode.react";
@@ -13,6 +14,7 @@ const Wallet = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { wallet } = useAuth();
+  const { btcToKes: btcToKesRate, loading: rateLoading } = useBtcRate();
   const [showQR, setShowQR] = useState(false);
 
   const { lightningAddress, onchainAddress, walletType, btcBalance } = wallet;
@@ -23,11 +25,6 @@ const Wallet = () => {
       title: "Copied!",
       description: `${label} copied to clipboard`,
     });
-  };
-
-  const btcToKes = (btc: number) => {
-    const rate = 6410256;
-    return Math.round(btc * rate);
   };
 
   return (
@@ -54,7 +51,11 @@ const Wallet = () => {
                   <span className="text-xl text-muted-foreground">BTC</span>
                 </div>
                 <p className="text-lg text-muted-foreground mt-1">
-                  ≈ KES {btcToKes(btcBalance).toLocaleString()}
+                  {rateLoading ? (
+                    "Loading rate..."
+                  ) : (
+                    `≈ KES ${btcToKes(btcBalance, btcToKesRate).toLocaleString()}`
+                  )}
                 </p>
               </div>
               <div className="flex gap-3">

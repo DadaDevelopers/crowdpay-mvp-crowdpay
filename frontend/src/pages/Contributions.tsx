@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
-import { mockCampaigns, mockContributions } from "@/data/mockCampaigns";
+import { mockLinks, mockContributions } from "@/data/mockLinks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Heart, ArrowUpRight, Calendar } from "lucide-react";
@@ -11,14 +11,14 @@ const Contributions = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Get contributions made by the user with campaign info
+  // Get contributions made by the user with link info
   const contributions = mockContributions
     .filter(c => c.user_id === user?.id)
     .map(contribution => {
-      const campaign = mockCampaigns.find(c => c.id === contribution.campaign_id);
+      const link = mockLinks.find(l => l.id === contribution.link_id);
       return {
         ...contribution,
-        campaign: campaign ? { title: campaign.title, slug: campaign.slug } : null,
+        link: link ? { title: link.title, slug: link.slug } : null,
       };
     })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -89,7 +89,7 @@ const Contributions = () => {
               <Card
                 key={contribution.id}
                 className="group border border-border/50 bg-card/80 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer"
-                onClick={() => contribution.campaign?.slug && navigate(`/c/${contribution.campaign.slug}`)}
+                onClick={() => contribution.link?.slug && navigate(`/c/${contribution.link.slug}`)}
               >
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between">
@@ -99,7 +99,7 @@ const Contributions = () => {
                       </div>
                       <div>
                         <h3 className="font-semibold group-hover:text-primary transition-colors">
-                          {contribution.campaign?.title || "Unknown Campaign"}
+                          {contribution.link?.title || "Unknown Event"}
                         </h3>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="h-3 w-3" />

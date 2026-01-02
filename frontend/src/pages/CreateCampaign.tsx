@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
-import { useCampaigns } from "@/contexts/CampaignsContext";
+import { useLinks } from "@/contexts/LinksContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,7 +33,7 @@ const CreateCampaign = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
-  const { addCampaign } = useCampaigns();
+  const { addLink } = useLinks();
   const [loading, setLoading] = useState(false);
   const [coverImagePreview, setCoverImagePreview] = useState<string>("");
   
@@ -86,9 +86,9 @@ const CreateCampaign = () => {
 
     setLoading(true);
 
-    // Create new campaign and add to context
-    const newCampaign = {
-      id: `campaign-${Date.now()}`,
+    // Create new link and add to context
+    const newLink = {
+      id: `link-${Date.now()}`,
       user_id: user.id,
       title: formData.title,
       slug: formData.slug || formData.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -104,7 +104,7 @@ const CreateCampaign = () => {
       event_location: formData.event_location || undefined,
     };
 
-    addCampaign(newCampaign);
+    addLink(newLink);
 
     await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -117,8 +117,8 @@ const CreateCampaign = () => {
     setLoading(false);
   };
 
-  const campaignUrl = `crowdpay.me/${formData.slug || "your-campaign"}`;
-  const fullUrl = `https://${campaignUrl}`;
+  const linkUrl = `crowdpay.me/${formData.slug || "your-link"}`;
+  const fullUrl = `https://${linkUrl}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -270,7 +270,7 @@ const CreateCampaign = () => {
                 <div className="space-y-2">
                   <Label htmlFor="goal_amount">Goal Amount (KES)</Label>
                   <Input
-                    id="goal_amount"
+                    id="amount"
                     type="number"
                     step="0.01"
                     min="0"
@@ -419,7 +419,7 @@ const CreateCampaign = () => {
                 Live Preview - How contributors will see it
               </h3>
 
-              {/* Campaign Card Preview */}
+              {/* Link Card Preview */}
               <Card className="overflow-hidden">
                 {coverImagePreview ? (
                   <div className="w-full h-40 overflow-hidden">
@@ -507,12 +507,12 @@ const CreateCampaign = () => {
                     </p>
                   </div>
 
-                  {/* Campaign Link */}
+                  {/* Link URL */}
                   <div className="p-3 bg-muted/50 rounded-lg space-y-2">
                     <p className="text-xs text-muted-foreground font-medium">Event Link</p>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-sm font-mono bg-background px-3 py-2 rounded border truncate">
-                        {campaignUrl}
+                        {linkUrl}
                       </code>
                       <Button size="sm" variant="outline" onClick={copyLink}>
                         <Copy className="w-4 h-4" />

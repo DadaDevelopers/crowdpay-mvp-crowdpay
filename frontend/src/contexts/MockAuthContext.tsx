@@ -36,16 +36,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const MockAuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<MockUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [wallet, setWallet] = useState<WalletData>(defaultWallet);
+  const [wallet, setWalletState] = useState<WalletData>(defaultWallet);
 
-  // Check localStorage for existing session on mount
+  // Check localStorage for existing session and wallet on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem("crowdpay_user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      // Restore user session
+      const storedUser = localStorage.getItem("crowdpay_user");
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+      }
+
+      // Restore wallet data
+      const storedWallet = localStorage.getItem("crowdpay_wallet");
+      if (storedWallet) {
+        const parsedWallet = JSON.parse(storedWallet);
+        setWalletState(parsedWallet);
+      } else {
+        // If no stored wallet, save default wallet
+        localStorage.setItem("crowdpay_wallet", JSON.stringify(defaultWallet));
+      }
+    } catch (error) {
+      console.error("Error restoring session:", error);
+      // Clear corrupted data
+      localStorage.removeItem("crowdpay_user");
+      localStorage.removeItem("crowdpay_wallet");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
+
+  // Custom setWallet that also persists to localStorage
+  const setWallet = (newWallet: WalletData) => {
+    setWalletState(newWallet);
+    try {
+      localStorage.setItem("crowdpay_wallet", JSON.stringify(newWallet));
+    } catch (error) {
+      console.error("Error saving wallet:", error);
+    }
+  };
 
   const signIn = async (email: string, password: string) => {
     const mockUser = { 
@@ -54,7 +84,13 @@ export const MockAuthProvider = ({ children }: { children: React.ReactNode }) =>
       username: email.split("@")[0]
     };
     setUser(mockUser);
-    localStorage.setItem("crowdpay_user", JSON.stringify(mockUser));
+    try {
+      localStorage.setItem("crowdpay_user", JSON.stringify(mockUser));
+      // Also save session timestamp for future use
+      localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
+    } catch (error) {
+      console.error("Error saving session:", error);
+    }
   };
 
   const signUp = async (email: string, password: string, username: string) => {
@@ -64,12 +100,24 @@ export const MockAuthProvider = ({ children }: { children: React.ReactNode }) =>
       username
     };
     setUser(mockUser);
-    localStorage.setItem("crowdpay_user", JSON.stringify(mockUser));
+    try {
+      localStorage.setItem("crowdpay_user", JSON.stringify(mockUser));
+      localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
+    } catch (error) {
+      console.error("Error saving session:", error);
+    }
   };
 
   const signOut = async () => {
     setUser(null);
-    localStorage.removeItem("crowdpay_user");
+    try {
+      localStorage.removeItem("crowdpay_user");
+      localStorage.removeItem("crowdpay_session_timestamp");
+      // Optionally clear wallet on sign out, or keep it
+      // localStorage.removeItem("crowdpay_wallet");
+    } catch (error) {
+      console.error("Error clearing session:", error);
+    }
   };
 
   return (

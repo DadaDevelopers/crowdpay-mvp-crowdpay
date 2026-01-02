@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useBtcRate, kesToSats } from "@/hooks/useBtcRate";
 import mpesaLogo from "@/assets/mpesa-logo.png";
 import bitcoinLogo from "@/assets/bitcoin-logo.png";
 
@@ -26,9 +27,10 @@ export const PaymentModal = ({ open, onClose }: PaymentModalProps) => {
   const [amount, setAmount] = useState("1000");
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+  const { kesToSats: kesToSatsRate, btcToKes, loading: rateLoading } = useBtcRate();
 
   const kesAmount = parseInt(amount) || 0;
-  const satAmount = Math.round(kesAmount * 12); // Simplified conversion
+  const satAmount = kesAmount > 0 ? kesToSats(kesAmount, kesToSatsRate) : 0;
   const lightningInvoice = "lnbc10u1pjdkv7qpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdqqcqzpgxqyz5vqsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3s9q";
 
   const handleCopy = () => {
@@ -131,7 +133,11 @@ export const PaymentModal = ({ open, onClose }: PaymentModalProps) => {
                 </motion.span>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Live rate: 1 KES ≈ 12 Sats
+                {rateLoading ? (
+                  "Loading live rate..."
+                ) : (
+                  `Live rate: 1 KES ≈ ${kesToSatsRate.toFixed(2)} Sats (1 BTC = ${btcToKes.toLocaleString()} KES)`
+                )}
               </p>
             </div>
 

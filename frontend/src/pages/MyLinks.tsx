@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
-import { useCampaigns, mockContributions } from "@/contexts/CampaignsContext";
+import { useLinks, mockContributions } from "@/contexts/LinksContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -19,22 +19,22 @@ const MyLinks = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
-  const { getUserCampaigns } = useCampaigns();
+  const { getUserLinks } = useLinks();
 
-  // Filter campaigns for current user and add stats
-  const campaigns = getUserCampaigns(user?.id || "")
-    .map(campaign => {
-      const contributions = mockContributions.filter(c => c.campaign_id === campaign.id);
+  // Filter links for current user and add stats
+  const links = getUserLinks(user?.id || "")
+    .map(link => {
+      const contributions = mockContributions.filter(c => c.link_id === link.id);
       const total_raised = contributions.reduce((sum, c) => sum + c.amount, 0);
       return {
-        ...campaign,
+        ...link,
         total_raised,
         contributions_count: contributions.length,
       };
     });
 
   const copyLink = (slug: string) => {
-    const link = `crowdpay.me/c/${slug}`;
+    const link = `crowdpay.me/${slug}`;
     navigator.clipboard.writeText(link);
     toast({
       title: "Link copied!",
@@ -70,7 +70,7 @@ const MyLinks = () => {
           </Button>
         </div>
 
-        {campaigns.length === 0 ? (
+        {links.length === 0 ? (
           <Card className="border-2 border-dashed border-border bg-card/50 backdrop-blur-sm">
             <CardContent className="flex flex-col items-center justify-center py-16">
               <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -88,30 +88,30 @@ const MyLinks = () => {
           </Card>
         ) : (
           <div className="grid gap-4">
-            {campaigns.map((campaign) => {
-              const progress = campaign.goal_amount > 0
-                ? ((campaign.total_raised || 0) / campaign.goal_amount) * 100
+            {links.map((link) => {
+              const progress = link.goal_amount > 0
+                ? ((link.total_raised || 0) / link.goal_amount) * 100
                 : 0;
-              const btcRaised = (campaign.total_raised || 0) / 100000000;
-              const btcGoal = campaign.goal_amount / 100000000;
+              const btcRaised = (link.total_raised || 0) / 100000000;
+              const btcGoal = link.goal_amount / 100000000;
 
               return (
-                <Card key={campaign.id} className="group border border-border/50 bg-card/80 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
+                <Card key={link.id} className="group border border-border/50 bg-card/80 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 space-y-4">
                         <div className="flex items-center gap-3">
-                          <h3 className="font-semibold text-lg">{campaign.title}</h3>
-                          <Badge variant="outline" className={getModeColor(campaign.mode)}>
-                            {campaign.mode}
+                          <h3 className="font-semibold text-lg">{link.title}</h3>
+                          <Badge variant="outline" className={getModeColor(link.mode)}>
+                            {link.mode}
                           </Badge>
-                          {campaign.category && (
+                          {link.category && (
                             <Badge variant="secondary" className="bg-secondary/50">
-                              {campaign.category}
+                              {link.category}
                             </Badge>
                           )}
-                          <Badge variant={campaign.is_public ? "default" : "secondary"} className="text-xs">
-                            {campaign.is_public ? "Public" : "Private"}
+                          <Badge variant={link.is_public ? "default" : "secondary"} className="text-xs">
+                            {link.is_public ? "Public" : "Private"}
                           </Badge>
                         </div>
 
@@ -123,19 +123,19 @@ const MyLinks = () => {
                           <Progress value={Math.min(progress, 100)} className="h-2" />
                           <div className="flex justify-between text-xs text-muted-foreground">
                             <span>{progress.toFixed(1)}% funded</span>
-                            <span>{campaign.contributions_count} contributors</span>
+                            <span>{link.contributions_count} contributors</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
                           <span className="text-sm text-muted-foreground">Link:</span>
                           <span className="text-sm font-medium text-primary flex-1 truncate">
-                            crowdpay.me/c/{campaign.slug}
+                            crowdpay.me/{link.slug}
                           </span>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => copyLink(campaign.slug)}
+                            onClick={() => copyLink(link.slug)}
                             className="h-8 w-8 p-0"
                           >
                             <Copy className="h-4 w-4" />
@@ -150,15 +150,15 @@ const MyLinks = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => navigate(`/c/${campaign.slug}`)}>
+                          <DropdownMenuItem onClick={() => navigate(`/c/${link.slug}`)}>
                             <Eye className="mr-2 h-4 w-4" />
                             View Page
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => copyLink(campaign.slug)}>
+                          <DropdownMenuItem onClick={() => copyLink(link.slug)}>
                             <Copy className="mr-2 h-4 w-4" />
                             Copy Link
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.open(`/c/${campaign.slug}`, '_blank')}>
+                          <DropdownMenuItem onClick={() => window.open(`/c/${link.slug}`, '_blank')}>
                             <ExternalLink className="mr-2 h-4 w-4" />
                             Open in New Tab
                           </DropdownMenuItem>

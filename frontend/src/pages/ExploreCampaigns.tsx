@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { useCampaigns, mockContributions } from "@/contexts/CampaignsContext";
+import { useLinks, mockContributions } from "@/contexts/LinksContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -21,7 +21,7 @@ import { ExternalLink, Users, Target, Search } from "lucide-react";
 
 const ITEMS_PER_PAGE = 9;
 
-interface Campaign {
+interface Link {
   id: string;
   title: string;
   description: string | null;
@@ -48,32 +48,32 @@ const categoryLabels: Record<string, { label: string; emoji: string }> = {
 };
 
 export default function ExploreCampaigns() {
-  const [filteredCampaigns, setFilteredCampaigns] = useState<Campaign[]>([]);
+  const [filteredLinks, setFilteredLinks] = useState<Link[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const navigate = useNavigate();
-  const { getPublicCampaigns } = useCampaigns();
+  const { getPublicLinks } = useLinks();
 
-  // Get public campaigns from context with contribution stats
-  const campaigns = useMemo(() => {
-    return getPublicCampaigns().map(campaign => {
-      const contributions = mockContributions.filter(c => c.campaign_id === campaign.id);
+  // Get public links from context with contribution stats
+  const links = useMemo(() => {
+    return getPublicLinks().map(link => {
+      const contributions = mockContributions.filter(c => c.link_id === link.id);
       return {
-        ...campaign,
+        ...link,
         totalRaised: contributions.reduce((sum, c) => sum + c.amount, 0),
         contributionCount: contributions.length,
       };
     });
-  }, [getPublicCampaigns]);
+  }, [getPublicLinks]);
 
   // Calculate pagination
-  const totalPages = Math.ceil(filteredCampaigns.length / ITEMS_PER_PAGE);
-  const paginatedCampaigns = useMemo(() => {
+  const totalPages = Math.ceil(filteredLinks.length / ITEMS_PER_PAGE);
+  const paginatedLinks = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredCampaigns.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredCampaigns, currentPage]);
+    return filteredLinks.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredLinks, currentPage]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -86,25 +86,25 @@ export default function ExploreCampaigns() {
   }, []);
 
   useEffect(() => {
-    let filtered = campaigns;
+    let filtered = links;
     
     // Filter by category
     if (selectedCategory !== "all") {
-      filtered = filtered.filter((c) => c.category === selectedCategory);
+      filtered = filtered.filter((l) => l.category === selectedCategory);
     }
     
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
-        (c) =>
-          c.title.toLowerCase().includes(query) ||
-          (c.description && c.description.toLowerCase().includes(query))
+        (l) =>
+          l.title.toLowerCase().includes(query) ||
+          (l.description && l.description.toLowerCase().includes(query))
       );
     }
     
-    setFilteredCampaigns(filtered);
-  }, [selectedCategory, searchQuery, campaigns]);
+    setFilteredLinks(filtered);
+  }, [selectedCategory, searchQuery, links]);
 
   const progressPercentage = (raised: number, goal: number) => {
     return Math.min((raised / goal) * 100, 100);
@@ -168,7 +168,7 @@ export default function ExploreCampaigns() {
               </Card>
             ))}
           </div>
-        ) : filteredCampaigns.length === 0 ? (
+        ) : filteredLinks.length === 0 ? (
           <Card className="p-12 text-center">
             <Target className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold mb-2">
@@ -184,44 +184,44 @@ export default function ExploreCampaigns() {
         ) : (
           <>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {paginatedCampaigns.map((campaign) => (
+              {paginatedLinks.map((link) => (
               <Card
-                key={campaign.id}
+                key={link.id}
                 className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => navigate(`/campaign/${campaign.slug || campaign.id}`)}
+                onClick={() => navigate(`/c/${link.slug || link.id}`)}
               >
-                {campaign.cover_image_url && (
+                {link.cover_image_url && (
                   <div className="h-48 overflow-hidden">
                     <img
-                      src={campaign.cover_image_url}
-                      alt={campaign.title}
+                      src={link.cover_image_url}
+                      alt={link.title}
                       className="w-full h-full object-cover"
                     />
                   </div>
                 )}
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <CardTitle className="line-clamp-2 flex-1">{campaign.title}</CardTitle>
+                    <CardTitle className="line-clamp-2 flex-1">{link.title}</CardTitle>
                     <Badge variant="secondary" className="shrink-0">
-                      {categoryLabels[campaign.category]?.emoji} {categoryLabels[campaign.category]?.label}
+                      {categoryLabels[link.category]?.emoji} {categoryLabels[link.category]?.label}
                     </Badge>
                   </div>
                   <CardDescription className="line-clamp-2">
-                    {campaign.description || "No description provided"}
+                    {link.description || "No description provided"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <div className="flex justify-between text-sm mb-2">
                       <span className="font-semibold text-bitcoin-orange">
-                        {formatAmount(campaign.totalRaised)}
+                        {formatAmount(link.totalRaised)}
                       </span>
                       <span className="text-muted-foreground">
-                        of {formatAmount(campaign.goal_amount)}
+                        of {formatAmount(link.goal_amount)}
                       </span>
                     </div>
                     <Progress
-                      value={progressPercentage(campaign.totalRaised, campaign.goal_amount)}
+                      value={progressPercentage(link.totalRaised, link.goal_amount)}
                       className="h-2"
                     />
                   </div>
@@ -229,7 +229,7 @@ export default function ExploreCampaigns() {
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Users className="h-4 w-4" />
-                      <span>{campaign.contributionCount} contributors</span>
+                      <span>{link.contributionCount} contributors</span>
                     </div>
                     <Button
                       size="sm"
@@ -237,7 +237,7 @@ export default function ExploreCampaigns() {
                       className="text-bitcoin-orange hover:text-bitcoin-orange/80"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/campaign/${campaign.slug || campaign.id}`);
+                        navigate(`/c/${link.slug || link.id}`);
                       }}
                     >
                       View <ExternalLink className="h-3 w-3 ml-1" />

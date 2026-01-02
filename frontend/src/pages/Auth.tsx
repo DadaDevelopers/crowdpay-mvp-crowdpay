@@ -22,14 +22,14 @@ const Auth = () => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { signIn, signUp, setWallet, wallet, user } = useAuth();
+  const { signIn, signUp, setWallet, wallet, user, loading } = useAuth();
 
-  // Redirect if already logged in
+  // Redirect if already logged in (but wait for loading to complete)
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       navigate("/app");
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
 
   const generateLightningAddress = async () => {
     setGeneratingLightning(true);
@@ -119,6 +119,15 @@ const Auth = () => {
     setStep(1);
   };
 
+  // Show loading state while checking session
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Helmet>
@@ -157,7 +166,7 @@ const Auth = () => {
                   ? step === 1 
                     ? "Start accepting Bitcoin and M-Pesa today"
                     : "Generate your Bitcoin wallet addresses"
-                  : "Sign in to manage your campaigns"
+                  : "Sign in to manage your payment links"
                 }
               </p>
               {isSignUp && (

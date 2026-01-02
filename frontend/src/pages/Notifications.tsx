@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
-import { mockCampaigns, mockContributions } from "@/data/mockCampaigns";
+import { mockLinks, mockContributions } from "@/data/mockLinks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ interface Notification {
   type: "contribution" | "goal_reached";
   title: string;
   message: string;
-  campaign_slug?: string;
+  link_slug?: string;
   amount?: number;
   payment_method?: string;
   created_at: string;
@@ -24,21 +24,21 @@ const Notifications = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Get user's campaigns
-  const userCampaigns = mockCampaigns.filter(c => c.user_id === user?.id);
-  const campaignIds = userCampaigns.map(c => c.id);
+  // Get user's links
+  const userLinks = mockLinks.filter(l => l.user_id === user?.id);
+  const linkIds = userLinks.map(l => l.id);
 
-  // Build notifications from contributions to user's campaigns
+  // Build notifications from contributions to user's links
   const notifications: Notification[] = mockContributions
-    .filter(c => campaignIds.includes(c.campaign_id))
+    .filter(c => linkIds.includes(c.link_id))
     .map(contribution => {
-      const campaign = userCampaigns.find(c => c.id === contribution.campaign_id);
+      const link = userLinks.find(l => l.id === contribution.link_id);
       return {
         id: contribution.id,
         type: "contribution" as const,
         title: "New Contribution",
-        message: `${contribution.contributor_name || "Anonymous"} contributed ${(contribution.amount / 100000000).toFixed(6)} BTC to "${campaign?.title}"`,
-        campaign_slug: campaign?.slug,
+        message: `${contribution.contributor_name || "Anonymous"} contributed ${(contribution.amount / 100000000).toFixed(6)} BTC to "${link?.title}"`,
+        link_slug: link?.slug,
         amount: contribution.amount,
         payment_method: contribution.payment_method,
         created_at: contribution.created_at,
@@ -48,17 +48,17 @@ const Notifications = () => {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   // Check for goal reached notifications
-  userCampaigns.forEach(campaign => {
-    const contributions = mockContributions.filter(c => c.campaign_id === campaign.id);
+  userLinks.forEach(link => {
+    const contributions = mockContributions.filter(c => c.link_id === link.id);
     const totalRaised = contributions.reduce((sum, c) => sum + c.amount, 0);
     
-    if (totalRaised >= campaign.goal_amount && contributions.length > 0) {
+    if (totalRaised >= link.goal_amount && contributions.length > 0) {
       notifications.unshift({
-        id: `goal-${campaign.id}`,
+        id: `goal-${link.id}`,
         type: "goal_reached",
         title: "🎉 Goal Reached!",
-        message: `"${campaign.title}" has reached its funding goal!`,
-        campaign_slug: campaign.slug,
+        message: `"${link.title}" has reached its funding goal!`,
+        link_slug: link.slug,
         created_at: new Date().toISOString(),
         read: false,
       });
@@ -103,7 +103,7 @@ const Notifications = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold">Notifications</h1>
-            <p className="text-muted-foreground">Stay updated on your campaigns</p>
+            <p className="text-muted-foreground">Stay updated on your payment links</p>
           </div>
           {notifications.length > 0 && (
             <Button variant="outline" size="sm">
@@ -121,7 +121,7 @@ const Notifications = () => {
               </div>
               <h3 className="text-lg font-semibold mb-2">No notifications yet</h3>
               <p className="text-muted-foreground mb-6 text-center max-w-sm">
-                When someone contributes to your campaigns, you'll see it here
+                When someone contributes to your payment links, you'll see it here
               </p>
             </CardContent>
           </Card>
@@ -133,7 +133,7 @@ const Notifications = () => {
                 className={`group border border-border/50 bg-card/80 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer ${
                   !notification.read ? "border-l-4 border-l-primary" : ""
                 }`}
-                onClick={() => notification.campaign_slug && navigate(`/c/${notification.campaign_slug}`)}
+                onClick={() => notification.link_slug && navigate(`/c/${notification.link_slug}`)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
