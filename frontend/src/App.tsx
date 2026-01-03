@@ -7,7 +7,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { ThemeProvider } from "next-themes";
 import { AppLayout } from "@/components/AppLayout";
 import { MockAuthProvider } from "@/contexts/MockAuthContext";
-import { LinksProvider } from "@/contexts/LinksContext";
+import { CampaignsProvider } from "@/contexts/CampaignsContext";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import CreateCampaign from "./pages/CreateCampaign";
@@ -33,8 +33,8 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <MockAuthProvider>
-              <LinksProvider>
-                <Routes>
+              <CampaignsProvider>
+              <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />
@@ -47,10 +47,9 @@ const App = () => (
                 <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
                 <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
                 <Route path="/c/:slug" element={<Campaign />} />
-                <Route path="/:slug" element={<Campaign />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
-              </LinksProvider>
+              </CampaignsProvider>
             </MockAuthProvider>
           </BrowserRouter>
         </TooltipProvider>

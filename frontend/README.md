@@ -13,7 +13,7 @@ CrowdPay allows users to create customizable fundraising campaigns that accept b
 - **Routing**: React Router v6
 - **State Management**: TanStack Query (React Query)
 - **Animations**: Framer Motion
-- **Backend**: Supabase (PostgreSQL, Auth, Edge Functions, Storage)
+- **Backend**: Python
 - **Bitcoin**: Blink API (Lightning Network integration)
 
 ## Project Structure
