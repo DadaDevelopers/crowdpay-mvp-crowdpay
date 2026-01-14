@@ -1,0 +1,22 @@
+[build]
+  # 1. Base directory: Change into the 'frontend' folder first.
+  # This is where Netlify will look for package.json and run the build command.
+  base = "frontend/"
+
+  # 2. Build command: The standard script to compile your React/TS code using Vite.
+  # Netlify runs this command *inside* the 'frontend' folder.
+  command = "npm run build" 
+
+  # 3. Publish directory: The folder created by the 'npm run build' command.
+  # For Vite, the default output folder is 'dist/'. This path is relative to the base directory.
+  # Full path Netlify serves from: /frontend/dist
+  publish = "dist/" 
+  
+# --- Single Page Application (SPA) Redirects ---
+# This is crucial for React Router. It ensures that any direct link 
+# (e.g., /about, /user/123) will still load your index.html file 
+# so your React router can take over the routing.
+[[redirects]]
+  from = "/*" 
+  to = "/index.html" 
+  status = 200
