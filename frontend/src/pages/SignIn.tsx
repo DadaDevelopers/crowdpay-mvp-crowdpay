@@ -131,7 +131,7 @@ const SignIn = () => {
                   </Link>
                 </p>
                 <p className="mt-4 p-3 bg-muted/50 rounded-md">
-                  💡 <strong>Demo Mode:</strong> Enter any email/password to explore the UI
+                  {/* Demo Mode message removed */}
                 </p>
               </div>
             </form>
