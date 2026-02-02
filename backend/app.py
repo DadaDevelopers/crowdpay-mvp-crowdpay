@@ -29,10 +29,10 @@ def create_app():
     CORS(app, origins=Config.CORS_ORIGINS)
 
     # Register blueprints
-    app.register_blueprint(campaigns_bp)
-    app.register_blueprint(contributions_bp)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(payments_bp)
+    app.register_blueprint(campaigns_bp, url_prefix='/api/campaigns')
+    app.register_blueprint(contributions_bp, url_prefix='/api/contributions')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(payments_bp, url_prefix='/api/payments')
 
     # Health check endpoint
     @app.route('/health', methods=['GET'])
