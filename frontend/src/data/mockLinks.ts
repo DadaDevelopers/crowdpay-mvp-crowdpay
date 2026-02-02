@@ -47,61 +47,9 @@ export const mockLinks = [
     is_public: true,
     created_at: "2025-01-20T14:15:00Z",
   },
-  {
-    id: "4",
-    user_id: "other-user-id",
-    title: "Small Business Launch",
-    slug: "business-launch",
-    description: "Starting a local bakery to serve our community. Help us bring fresh bread and pastries to the neighborhood!",
-    goal_amount: 60000000,
-    total_raised: 15600000,
-    contributions_count: 28,
-    mode: "merchant",
-    category: "business",
-    cover_image_url: null,
-    theme_color: "#FF6F00",
-    is_public: true,
-    created_at: "2025-01-18T11:45:00Z",
-  },
-];
+  ];
+// ...existing code...
 
-export const mockContributions = [
-  {
-    id: "c1",
-    link_id: "1",
-    user_id: "mock-user-id",
-    contributor_name: "Alice Wanjiku",
-    amount: 500000, // satoshis
-    payment_method: "lightning",
-    created_at: "2025-01-21T09:30:00Z",
-  },
-  {
-    id: "c2",
-    link_id: "1",
-    user_id: "mock-user-id",
-    contributor_name: "John Mwangi",
-    amount: 1000000,
-    payment_method: "mpesa",
-    created_at: "2025-01-20T15:20:00Z",
-  },
-  {
-    id: "c3",
-    link_id: "2",
-    user_id: "mock-user-id",
-    contributor_name: "Sarah Njeri",
-    amount: 750000,
-    payment_method: "onchain",
-    created_at: "2025-01-19T12:10:00Z",
-  },
-  {
-    id: "c4",
-    link_id: "3",
-    user_id: "mock-user-id",
-    contributor_name: "Peter Kamau",
-    amount: 2000000,
-    payment_method: "lightning",
-    created_at: "2025-01-22T08:45:00Z",
-  },
-];
+export const mockContributions = [];
 
 

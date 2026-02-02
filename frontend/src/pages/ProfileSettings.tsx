@@ -29,12 +29,12 @@ const ProfileSettings = () => {
   const [loading, setLoading] = useState(false);
   
   // Mock profile data
-  const [username, setUsername] = useState("demo_user");
-  const [fullName, setFullName] = useState("Demo User");
+  const [username, setUsername] = useState("");
+  const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bitcoinWalletType, setBitcoinWalletType] = useState("internal");
-  const [lightningAddress, setLightningAddress] = useState("demo@crowdpay.me");
-  const [onchainAddress, setOnchainAddress] = useState("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh");
+  const [lightningAddress, setLightningAddress] = useState("");
+  const [onchainAddress, setOnchainAddress] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
 
   const handleSave = async (e: React.FormEvent) => {
