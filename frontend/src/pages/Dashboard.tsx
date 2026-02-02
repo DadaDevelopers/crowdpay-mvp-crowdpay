@@ -14,7 +14,8 @@ const Dashboard = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const { getUserCampaigns } = useCampaigns();
-  const [btcBalance] = useState(0.0234);
+  // If user has no campaigns, show zero balance
+  const [btcBalance] = useState(0);
   
   // Use campaigns from context filtered for current user
   const campaigns = getUserCampaigns(user?.id || "").map(c => {
@@ -31,7 +32,7 @@ const Dashboard = () => {
     };
   });
 
-  const totalRaised = campaigns.reduce((sum, c) => sum + (c.total_raised || 0), 0);
+  const totalRaised = campaigns.length === 0 ? 0 : campaigns.reduce((sum, c) => sum + (c.total_raised || 0), 0);
 
   const copyLink = (slug: string) => {
     const link = `${window.location.origin}/c/${slug}`;
@@ -188,10 +189,6 @@ const Dashboard = () => {
                         </div>
                       </div>
 
-                      {/* Footer Note */}
-                      <p className="text-xs text-muted-foreground">
-                        Contributors can pay via Lightning, On-chain, or M-Pesa (auto-converts to BTC)
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -209,12 +206,6 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Footer */}
-        <div className="mt-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            © 2025 CrowdPay. Bitcoin-powered crowdfunding for events, activism & personal milestones.
-          </p>
-        </div>
       </div>
     </>
   );

@@ -17,26 +17,21 @@ interface AuthContextType {
   user: MockUser | null;
   session: any;
   loading: boolean;
-  wallet: WalletData;
+  wallet: WalletData | null;
   setWallet: (wallet: WalletData) => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
-const defaultWallet: WalletData = {
-  lightningAddress: "demo@crowdpay.me",
-  onchainAddress: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-  walletType: "blink",
-  btcBalance: 0.0234,
-};
+// No defaultWallet: wallet should be null unless created
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const MockAuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<MockUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [wallet, setWalletState] = useState<WalletData>(defaultWallet);
+  const [wallet, setWalletState] = useState<WalletData | null>(null);
 
   // Check localStorage for existing session and wallet on mount
   useEffect(() => {
@@ -54,8 +49,7 @@ export const MockAuthProvider = ({ children }: { children: React.ReactNode }) =>
         const parsedWallet = JSON.parse(storedWallet);
         setWalletState(parsedWallet);
       } else {
-        // If no stored wallet, save default wallet
-        localStorage.setItem("crowdpay_wallet", JSON.stringify(defaultWallet));
+        setWalletState(null);
       }
     } catch (error) {
       console.error("Error restoring session:", error);
