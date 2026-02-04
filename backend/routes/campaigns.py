@@ -259,4 +259,3 @@ def get_campaign_contributions(campaign_id):
     except Exception as e:
         logger.error(f"Error fetching contributions: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-    
