@@ -7,11 +7,18 @@ import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { Helmet } from "react-helmet-async";
-import { Zap, Wallet, RefreshCw, Copy, Check, ArrowRight, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Zap, Wallet, Copy, Check, ArrowRight, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import logo from "@/assets/logo.png";
-import bitcoinLogo from "@/assets/bitcoin-logo.png";
 import SubNav from "@/components/SubNav";
 import Footer from "@/components/Footer";
+
+const PASSWORD_RULES = [
+  { test: (p: string) => p.length >= 8, label: "At least 8 characters" },
+  { test: (p: string) => /[A-Z]/.test(p), label: "One uppercase letter" },
+  { test: (p: string) => /[a-z]/.test(p), label: "One lowercase letter" },
+  { test: (p: string) => /\d/.test(p), label: "One number" },
+  { test: (p: string) => /[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]/.test(p), label: "One special character" },
+];
 
 const SignUp = () => {
   const [step, setStep] = useState(1); // 1 = credentials, 2 = wallet setup
@@ -23,9 +30,8 @@ const SignUp = () => {
   const [onchainAddress, setOnchainAddress] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [generatingLightning, setGeneratingLightning] = useState(false);
-  const [generatingOnchain, setGeneratingOnchain] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signUp, setWallet, wallet, user, loading } = useAuth();
@@ -37,34 +43,6 @@ const SignUp = () => {
     }
   }, [user, loading, navigate]);
 
-  const generateLightningAddress = async () => {
-    setGeneratingLightning(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
-    const generatedUsername = username || email.split("@")[0] || "user";
-    setLightningAddress(`${generatedUsername}@crowdpay.me`);
-    setGeneratingLightning(false);
-    toast({
-      title: "Lightning Address Generated",
-      description: "Your Lightning address is ready for instant payments!",
-    });
-  };
-
-  const generateOnchainAddress = async () => {
-    setGeneratingOnchain(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    let address = "bc1q";
-    for (let i = 0; i < 38; i++) {
-      address += chars[Math.floor(Math.random() * chars.length)];
-    }
-    setOnchainAddress(address);
-    setGeneratingOnchain(false);
-    toast({
-      title: "On-Chain Address Generated",
-      description: "Your Bitcoin wallet address is ready!",
-    });
-  };
-
   const copyToClipboard = async (text: string, field: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedField(field);
@@ -75,6 +53,8 @@ const SignUp = () => {
     });
   };
 
+  const isPasswordValid = PASSWORD_RULES.every((rule) => rule.test(password));
+
   const handleContinue = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -82,6 +62,24 @@ const SignUp = () => {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (username && (username.length < 3 || !/^[a-zA-Z0-9_-]+$/.test(username))) {
+      toast({
+        title: "Error",
+        description: "Username must be at least 3 characters and contain only letters, numbers, hyphens, and underscores",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isPasswordValid) {
+      toast({
+        title: "Error",
+        description: "Password does not meet the requirements",
         variant: "destructive",
       });
       return;
@@ -96,43 +94,45 @@ const SignUp = () => {
       return;
     }
 
-    if (password.length < 6) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 6 characters",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setStep(2);
   };
 
-  const handleSignUp = async () => {
-    // Save wallet data to context if addresses were generated
-    if (lightningAddress || onchainAddress) {
-      setWallet({
-        ...wallet,
-        lightningAddress: lightningAddress || wallet.lightningAddress,
-        onchainAddress: onchainAddress || wallet.onchainAddress,
-        walletType: "blink",
+  const handleSignUp = async (skipWallet: boolean) => {
+    setSubmitting(true);
+    try {
+      // Save wallet data to context if addresses were provided (not skipped)
+      if (!skipWallet && (lightningAddress || onchainAddress)) {
+        setWallet({
+          ...wallet,
+          lightningAddress: lightningAddress || wallet.lightningAddress,
+          onchainAddress: onchainAddress || wallet.onchainAddress,
+          walletType: "external",
+        });
+      }
+
+      await signUp(email, password, username || email.split("@")[0]);
+
+      toast({
+        title: "Account Created!",
+        description: "Welcome to CrowdPay.",
       });
+
+      navigate("/app");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Sign up failed. Please try again.";
+      toast({
+        title: "Sign Up Failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
     }
-
-    await signUp(email, password, username || email.split("@")[0]);
-
-    toast({
-      title: "Account Created!",
-      description: "Welcome to CrowdPay. You’re among the first to see this as we continue development.",
-    });
-
-    navigate("/app");
   };
 
   const handleBack = () => {
     setStep(1);
   };
-
 
   if (loading) {
     return (
@@ -163,7 +163,7 @@ const SignUp = () => {
               <p className="text-muted-foreground">
                 {step === 1
                   ? "Start accepting Bitcoin and M-Pesa today"
-                  : "Generate your Bitcoin wallet addresses"
+                  : "Add your Bitcoin wallet addresses (optional)"
                 }
               </p>
               <div className="flex justify-center gap-2 mt-4">
@@ -195,7 +195,6 @@ const SignUp = () => {
                   />
                 </div>
 
-
                 <div className="relative">
                   <Label className="text-sm font-medium mb-2 block">Password *</Label>
                   <Input
@@ -214,6 +213,18 @@ const SignUp = () => {
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
+                  {password && (
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {PASSWORD_RULES.map((rule) => (
+                        <li
+                          key={rule.label}
+                          className={rule.test(password) ? "text-green-600" : "text-muted-foreground"}
+                        >
+                          {rule.test(password) ? "+" : "-"} {rule.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div className="relative">
@@ -247,9 +258,6 @@ const SignUp = () => {
                     <Link to="/signin" className="text-primary hover:underline font-medium">
                       Sign In
                     </Link>
-                  </p>
-                  <p className="mt-4 p-3 bg-muted/50 rounded-md">
-                    💡 <strong>Demo Mode:</strong> Enter any email/password to explore the UI
                   </p>
                 </div>
               </form>
@@ -288,20 +296,6 @@ const SignUp = () => {
                       </Button>
                     )}
                   </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full gap-2"
-                    onClick={generateLightningAddress}
-                    disabled={generatingLightning}
-                  >
-                    {generatingLightning ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Zap className="w-4 h-4" />
-                    )}
-                    {generatingLightning ? "Generating..." : "Generate CrowdPay Lightning Address"}
-                  </Button>
                 </div>
 
                 {/* On-Chain Address */}
@@ -336,40 +330,38 @@ const SignUp = () => {
                       </Button>
                     )}
                   </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full gap-2"
-                    onClick={generateOnchainAddress}
-                    disabled={generatingOnchain}
-                  >
-                    {generatingOnchain ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <img src={bitcoinLogo} alt="Bitcoin" className="w-4 h-4" />
-                    )}
-                    {generatingOnchain ? "Generating..." : "Generate On-Chain Wallet"}
-                  </Button>
                 </div>
 
-
                 <div className="pt-4 space-y-3">
-                  <Button onClick={handleSignUp} className="w-full">
-                    Complete Sign Up
+                  <Button
+                    onClick={() => handleSignUp(false)}
+                    className="w-full"
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating Account...
+                      </>
+                    ) : (
+                      "Complete Sign Up"
+                    )}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     className="w-full gap-2"
-                    onClick={handleSignUp}
+                    onClick={() => handleSignUp(true)}
+                    disabled={submitting}
                   >
-                    Skip this step
+                    Skip wallet setup
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     className="w-full gap-2"
                     onClick={handleBack}
+                    disabled={submitting}
                   >
                     <ArrowLeft className="w-4 h-4" />
                     Back
@@ -377,17 +369,15 @@ const SignUp = () => {
                 </div>
 
                 <p className="text-xs text-center text-muted-foreground p-3 bg-muted/50 rounded-md">
-                  ⚡ You can skip this step and set up wallets later in Settings
+                  You can set up wallets later in Settings
                 </p>
               </div>
             )}
           </Card>
         </div>
-
-
       </div>
 
-      {/* Footer (copied from Landing) */}
+      {/* Footer */}
       <Footer />
     </>
   );

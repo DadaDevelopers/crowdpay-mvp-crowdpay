@@ -65,9 +65,7 @@ backend/
    cd backend
    ```
 
-2. **Create and activate virtual environment**
-   ```bash
-   python -m venv venv
+2. **Create and activate virtual environment
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 

@@ -15,7 +15,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate("/auth");
+      navigate("/signin");
     }
   }, [user, loading, navigate]);
 

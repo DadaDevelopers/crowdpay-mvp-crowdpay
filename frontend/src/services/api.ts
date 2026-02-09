@@ -7,7 +7,51 @@
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// Types
+// Campaign Types
+export interface Campaign {
+  id: string;
+  creator_id: string;
+  creator_email?: string;
+  title: string;
+  description: string;
+  target_amount: number;
+  current_amount: number;
+  currency: string;
+  status: "active" | "completed" | "cancelled" | "expired";
+  end_date?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CampaignStatistics {
+  progress_percentage: number;
+  remaining_amount: number;
+  total_contributions: number;
+  paid_contributions: number;
+  is_goal_reached: boolean;
+}
+
+export interface CreateCampaignRequest {
+  title: string;
+  description: string;
+  target_amount: number;
+  currency?: string;
+  end_date?: string;
+}
+
+export interface CampaignResponse {
+  campaign: Campaign;
+  statistics?: CampaignStatistics;
+}
+
+export interface CampaignsListResponse {
+  campaigns: Campaign[];
+  count: number;
+  offset: number;
+  limit: number;
+}
+
+// Contribution Types
 export interface CreateContributionRequest {
   campaign_id: string;
   amount: number;
@@ -92,6 +136,93 @@ async function apiCall<T>(
 
   return data;
 }
+
+// Campaign API
+export const campaignApi = {
+  /**
+   * Create a new campaign (requires auth)
+   */
+  create: async (
+    request: CreateCampaignRequest,
+    authToken: string
+  ): Promise<{ message: string; campaign: Campaign }> => {
+    return apiCall<{ message: string; campaign: Campaign }>("/api/campaigns", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify(request),
+    });
+  },
+
+  /**
+   * Get all campaigns with optional filtering
+   */
+  list: async (params?: {
+    status?: string;
+    creator_id?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<CampaignsListResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set("status", params.status);
+    if (params?.creator_id) searchParams.set("creator_id", params.creator_id);
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    if (params?.offset) searchParams.set("offset", params.offset.toString());
+
+    const query = searchParams.toString();
+    return apiCall<CampaignsListResponse>(
+      `/api/campaigns${query ? `?${query}` : ""}`
+    );
+  },
+
+  /**
+   * Get a single campaign by ID with statistics
+   */
+  get: async (campaignId: string): Promise<CampaignResponse> => {
+    return apiCall<CampaignResponse>(`/api/campaigns/${campaignId}`);
+  },
+
+  /**
+   * Update a campaign (requires auth, owner only)
+   */
+  update: async (
+    campaignId: string,
+    data: Partial<CreateCampaignRequest>,
+    authToken: string
+  ): Promise<{ message: string; campaign: Campaign }> => {
+    return apiCall<{ message: string; campaign: Campaign }>(
+      `/api/campaigns/${campaignId}`,
+      {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  /**
+   * Delete (cancel) a campaign (requires auth, owner only)
+   */
+  delete: async (
+    campaignId: string,
+    authToken: string
+  ): Promise<{ message: string }> => {
+    return apiCall<{ message: string }>(`/api/campaigns/${campaignId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+  },
+
+  /**
+   * Get contributions for a campaign
+   */
+  getContributions: async (
+    campaignId: string
+  ): Promise<{ contributions: unknown[]; count: number }> => {
+    return apiCall<{ contributions: unknown[]; count: number }>(
+      `/api/campaigns/${campaignId}/contributions`
+    );
+  },
+};
 
 // Contribution API
 export const contributionApi = {
@@ -263,6 +394,7 @@ export const healthApi = {
 };
 
 export default {
+  campaign: campaignApi,
   contribution: contributionApi,
   invoice: invoiceApi,
   wallet: walletApi,

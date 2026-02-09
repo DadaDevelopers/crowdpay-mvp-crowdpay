@@ -1,54 +1,125 @@
-import { createContext, useContext, useState, ReactNode } from "react";
-import { mockCampaigns as initialCampaigns, mockContributions } from "@/data/mockCampaigns";
+import { createContext, useContext, ReactNode, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  campaignApi,
+  Campaign,
+  CampaignStatistics,
+  CreateCampaignRequest,
+} from "@/services/api";
+import { useAuth } from "@/contexts/MockAuthContext";
 
-export interface Campaign {
-  id: string;
-  user_id: string;
-  title: string;
-  slug: string;
-  description: string;
-  goal_amount: number;
-  mode: string;
-  category: string;
-  cover_image_url: string | null;
-  theme_color: string;
-  is_public: boolean;
-  created_at: string;
-  end_date?: string;
-  event_location?: string;
-}
+// Re-export Campaign type for convenience
+export type { Campaign, CampaignStatistics };
 
 interface CampaignsContextType {
+  // Data
   campaigns: Campaign[];
-  addCampaign: (campaign: Campaign) => void;
-  getCampaignBySlug: (slug: string) => Campaign | undefined;
-  getUserCampaigns: (userId: string) => Campaign[];
+  isLoading: boolean;
+  error: Error | null;
+
+  // Actions
+  createCampaign: (data: CreateCampaignRequest) => Promise<Campaign>;
+  getCampaignById: (id: string) => Promise<{ campaign: Campaign; statistics?: CampaignStatistics }>;
+  getUserCampaigns: () => Campaign[];
   getPublicCampaigns: () => Campaign[];
+  refetchCampaigns: () => void;
+
+  // Mutation states
+  isCreating: boolean;
 }
 
 const CampaignsContext = createContext<CampaignsContextType | undefined>(undefined);
 
 export const CampaignsProvider = ({ children }: { children: ReactNode }) => {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns as Campaign[]);
+  const queryClient = useQueryClient();
+  const { user, session } = useAuth();
 
-  const addCampaign = (campaign: Campaign) => {
-    setCampaigns(prev => [campaign, ...prev]);
-  };
+  // Fetch all campaigns
+  const {
+    data: campaignsData,
+    isLoading,
+    error,
+    refetch: refetchCampaigns,
+  } = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: async () => {
+      const response = await campaignApi.list({ status: "active", limit: 100 });
+      return response.campaigns;
+    },
+    staleTime: 30000, // 30 seconds
+    refetchOnWindowFocus: true,
+  });
 
-  const getCampaignBySlug = (slug: string) => {
-    return campaigns.find(c => c.slug === slug);
-  };
+  const campaigns = campaignsData || [];
 
-  const getUserCampaigns = (userId: string) => {
-    return campaigns.filter(c => c.user_id === userId);
-  };
+  // Create campaign mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: CreateCampaignRequest) => {
+      if (!session?.access_token) {
+        throw new Error("Authentication required");
+      }
+      const response = await campaignApi.create(data, session.access_token);
+      return response.campaign;
+    },
+    onSuccess: () => {
+      // Invalidate and refetch campaigns list
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+  });
 
-  const getPublicCampaigns = () => {
-    return campaigns.filter(c => c.is_public);
-  };
+  // Get campaign by ID (with statistics)
+  const getCampaignById = useCallback(
+    async (id: string) => {
+      // Try to get from cache first
+      const cached = queryClient.getQueryData<{ campaign: Campaign; statistics?: CampaignStatistics }>(
+        ["campaign", id]
+      );
+      if (cached) return cached;
+
+      // Fetch from API
+      const response = await campaignApi.get(id);
+
+      // Cache the result
+      queryClient.setQueryData(["campaign", id], response);
+
+      return response;
+    },
+    [queryClient]
+  );
+
+  // Get campaigns for current user
+  const getUserCampaigns = useCallback(() => {
+    if (!user?.id) return [];
+    return campaigns.filter((c) => c.creator_id === user.id);
+  }, [campaigns, user?.id]);
+
+  // Get public campaigns (all active campaigns)
+  const getPublicCampaigns = useCallback(() => {
+    return campaigns.filter((c) => c.status === "active");
+  }, [campaigns]);
+
+  // Create campaign wrapper
+  const createCampaign = useCallback(
+    async (data: CreateCampaignRequest) => {
+      return createMutation.mutateAsync(data);
+    },
+    [createMutation]
+  );
 
   return (
-    <CampaignsContext.Provider value={{ campaigns, addCampaign, getCampaignBySlug, getUserCampaigns, getPublicCampaigns }}>
+    <CampaignsContext.Provider
+      value={{
+        campaigns,
+        isLoading,
+        error: error as Error | null,
+        createCampaign,
+        getCampaignById,
+        getUserCampaigns,
+        getPublicCampaigns,
+        refetchCampaigns,
+        isCreating: createMutation.isPending,
+      }}
+    >
       {children}
     </CampaignsContext.Provider>
   );
@@ -61,5 +132,3 @@ export const useCampaigns = () => {
   }
   return context;
 };
-
-export { mockContributions };

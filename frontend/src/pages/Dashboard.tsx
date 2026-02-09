@@ -1,53 +1,60 @@
-import { useState } from "react";
+
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
-import { useCampaigns, mockContributions } from "@/contexts/CampaignsContext";
+import { useCampaigns } from "@/contexts/CampaignsContext";
+import { useQuery } from "@tanstack/react-query";
+import { walletApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Bitcoin, Copy, TrendingUp, Link2 } from "lucide-react";
+import { Plus, Bitcoin, Copy, TrendingUp, Link2, Loader2 } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { getUserCampaigns } = useCampaigns();
-  const [btcBalance] = useState(0.0234);
-  
-  // Use campaigns from context filtered for current user
-  const campaigns = getUserCampaigns(user?.id || "").map(c => {
-    const contributions = mockContributions.filter(cont => cont.campaign_id === c.id);
-    const total_raised = contributions.reduce((sum, cont) => sum + cont.amount, 0);
-    return {
-      id: c.id,
-      title: c.title,
-      slug: c.slug,
-      description: c.description,
-      goal_amount: c.goal_amount,
-      total_raised,
-      contributions_count: contributions.length,
-    };
+  const { user, session } = useAuth();
+  const { getUserCampaigns, isLoading: campaignsLoading } = useCampaigns();
+
+  // Get user's campaigns from context (which fetches from backend)
+  const campaigns = getUserCampaigns();
+
+  // Fetch wallet balance from backend
+  const { data: walletData, isLoading: walletLoading } = useQuery({
+    queryKey: ["wallet-balance"],
+    queryFn: async () => {
+      if (!session?.access_token) return null;
+      return walletApi.getBalance(session.access_token);
+    },
+    enabled: !!session?.access_token,
+    staleTime: 30000,
+    retry: false,
   });
 
-  const totalRaised = campaigns.reduce((sum, c) => sum + (c.total_raised || 0), 0);
+  // Calculate totals from campaigns
+  const totalRaised = campaigns.reduce((sum, c) => sum + (c.current_amount || 0), 0);
+  const btcBalance = walletData?.balance_btc || 0;
 
-  const copyLink = (slug: string) => {
-    const link = `${window.location.origin}/c/${slug}`;
+  const copyLink = (campaignId: string, title: string) => {
+    const link = `${window.location.origin}/c/${campaignId}`;
     navigator.clipboard.writeText(link);
     toast({
       title: "Link copied!",
-      description: "Share it with your supporters",
+      description: `Share link for "${title}" with your supporters`,
     });
   };
 
+  // Convert sats to BTC
+  const satsToBtc = (sats: number) => sats / 100000000;
+
   // Convert BTC to KES (approximate rate)
   const btcToKes = (btc: number) => {
-    const rate = 6410256; // Approximate BTC to KES rate
+    const rate = 11634460; // Approximate BTC to KES rate
     return Math.round(btc * rate);
   };
 
+  const isLoading = campaignsLoading || walletLoading;
 
   return (
     <>
@@ -63,6 +70,7 @@ const Dashboard = () => {
             Welcome{user?.username ? `, ${user.username}` : ""}!
           </h2>
         </div>
+
         {/* Stats Cards Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           {/* BTC Balance Card */}
@@ -70,11 +78,17 @@ const Dashboard = () => {
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">BTC Balance</p>
-                  <p className="text-2xl font-bold">{btcBalance.toFixed(4)} BTC</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    ≈ KES {btcToKes(btcBalance).toLocaleString()}
-                  </p>
+                  <p className="text-sm text-muted-foreground mb-1">Wallet Balance</p>
+                  {walletLoading ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">{btcBalance.toFixed(8)} BTC</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        = KES {btcToKes(btcBalance).toLocaleString()}
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
                   <Bitcoin className="h-6 w-6 text-primary" />
@@ -88,9 +102,15 @@ const Dashboard = () => {
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Active Links</p>
-                  <p className="text-2xl font-bold">{campaigns.length}</p>
-                  <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">Currently Active</p>
+                  <p className="text-sm text-muted-foreground mb-1">Active Campaigns</p>
+                  {campaignsLoading ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">{campaigns.length}</p>
+                      <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">Currently Active</p>
+                    </>
+                  )}
                 </div>
                 <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-500/5 flex items-center justify-center">
                   <Link2 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
@@ -105,10 +125,18 @@ const Dashboard = () => {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Total Raised</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {(totalRaised / 100000000).toFixed(7)} BTC
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">This month</p>
+                  {campaignsLoading ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                        {totalRaised.toLocaleString()} SATS
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        = {satsToBtc(totalRaised).toFixed(8)} BTC
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div className="h-12 w-12 rounded-full bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center">
                   <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
@@ -119,30 +147,32 @@ const Dashboard = () => {
         </div>
 
         {/* Campaigns List */}
-        {campaigns.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : campaigns.length === 0 ? (
           <Card className="border-2 border-dashed border-border bg-card/50 backdrop-blur-sm">
             <CardContent className="flex flex-col items-center justify-center py-16">
               <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                 <Link2 className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">No payment links yet</h3>
+              <h3 className="text-lg font-semibold mb-2">No campaigns yet</h3>
               <p className="text-muted-foreground mb-6 text-center max-w-sm">
-                Create your first payment link to start accepting Bitcoin and M-Pesa contributions
+                Create your first campaign to start accepting Bitcoin Lightning contributions
               </p>
               <Button onClick={() => navigate("/create")} className="bg-primary hover:bg-primary/90">
                 <Plus className="mr-2 h-4 w-4" />
-                Create Payment Link
+                Create Campaign
               </Button>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-4">
             {campaigns.map((campaign) => {
-              const progress = campaign.goal_amount > 0
-                ? ((campaign.total_raised || 0) / campaign.goal_amount) * 100
+              const progress = campaign.target_amount > 0
+                ? ((campaign.current_amount || 0) / campaign.target_amount) * 100
                 : 0;
-              const btcRaised = (campaign.total_raised || 0) / 100000000;
-              const btcGoal = campaign.goal_amount / 100000000;
 
               return (
                 <Card key={campaign.id} className="group border border-border/50 bg-card/80 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
@@ -152,14 +182,14 @@ const Dashboard = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">{campaign.title}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Track contributions in real-time. BTC + M-Pesa supported.
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {campaign.description}
                           </p>
                         </div>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyLink(campaign.slug)}
+                          onClick={() => copyLink(campaign.id, campaign.title)}
                           className="flex items-center gap-2 hover:bg-primary hover:text-primary-foreground hover:border-primary"
                         >
                           <Copy className="h-4 w-4" />
@@ -172,7 +202,7 @@ const Dashboard = () => {
                         <div className="flex justify-between text-sm mb-2">
                           <span className="text-muted-foreground">Progress</span>
                           <span className="font-medium">
-                            {btcRaised.toFixed(4)}/{btcGoal.toFixed(2)} BTC
+                            {(campaign.current_amount || 0).toLocaleString()} / {campaign.target_amount.toLocaleString()} {campaign.currency}
                           </span>
                         </div>
                         <Progress value={Math.min(progress, 100)} className="h-2 mb-2" />
@@ -181,22 +211,22 @@ const Dashboard = () => {
                         </p>
                       </div>
 
-                      {/* Payment Link */}
+                      {/* Campaign Link */}
                       <div>
-                        <p className="text-sm text-muted-foreground mb-2">Payment Link</p>
+                        <p className="text-sm text-muted-foreground mb-2">Campaign Link</p>
                         <div className="bg-muted/30 rounded-lg px-4 py-3 flex items-center justify-between">
-                          <Link 
-                            to={`/c/${campaign.slug}`} 
+                          <Link
+                            to={`/c/${campaign.id}`}
                             className="text-sm font-medium text-primary truncate hover:underline transition-colors"
                           >
-                            {window.location.origin}/c/{campaign.slug}
+                            {window.location.origin}/c/{campaign.id}
                           </Link>
                         </div>
                       </div>
 
                       {/* Footer Note */}
                       <p className="text-xs text-muted-foreground">
-                        Contributors can pay via Lightning, On-chain, or M-Pesa (auto-converts to BTC)
+                        Contributors can pay via Lightning Network (instant, low fees)
                       </p>
                     </div>
                   </CardContent>
@@ -204,13 +234,13 @@ const Dashboard = () => {
               );
             })}
 
-            {/* Create New Payment Link Button */}
-            <Button 
-              onClick={() => navigate("/create")} 
+            {/* Create New Campaign Button */}
+            <Button
+              onClick={() => navigate("/create")}
               className="w-full bg-primary hover:bg-primary/90 py-6 text-base"
             >
               <Plus className="mr-2 h-5 w-5" />
-              Create New Payment Link
+              Create New Campaign
             </Button>
           </div>
         )}
@@ -218,7 +248,7 @@ const Dashboard = () => {
         {/* Footer */}
         <div className="mt-12 text-center">
           <p className="text-sm text-muted-foreground">
-            © 2025 CrowdPay. Bitcoin-powered crowdfunding for events, activism & personal milestones.
+            CrowdPay - Bitcoin-powered crowdfunding for events, activism & personal milestones.
           </p>
         </div>
       </div>
