@@ -2,8 +2,8 @@
  * Campaign Page - Public view of a single campaign
  *
  * Features:
- * - Campaign details display
- * - Progress tracking
+ * - Campaign details display (fetched from backend)
+ * - Progress tracking with real data
  * - Lightning payment integration via LNbits
  * - Social sharing
  */
@@ -11,68 +11,67 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { useCampaigns, mockContributions } from "@/contexts/CampaignsContext";
+import { useQuery } from "@tanstack/react-query";
+import { campaignApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Bitcoin, Share2, Sun, Moon, Zap } from "lucide-react";
+import { Bitcoin, Share2, Sun, Moon, Zap, Loader2, AlertCircle } from "lucide-react";
 import { PaymentModal } from "@/components/PaymentModal";
 
-const categoryLabels: Record<string, { label: string; emoji: string }> = {
-  education: { label: "Education", emoji: "🎓" },
-  medical: { label: "Medical", emoji: "🏥" },
-  business: { label: "Business", emoji: "💼" },
-  community: { label: "Community", emoji: "🤝" },
-  emergency: { label: "Emergency", emoji: "🚨" },
-  creative: { label: "Creative", emoji: "🎨" },
-  sports: { label: "Sports", emoji: "⚽" },
-  charity: { label: "Charity", emoji: "❤️" },
-  other: { label: "Other", emoji: "📦" },
-};
-
 const Campaign = () => {
-  const { slug } = useParams<{ slug: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { getCampaignBySlug } = useCampaigns();
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
-  // Find campaign from context
-  const campaign = getCampaignBySlug(slug || "");
+  // Fetch campaign data from backend
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["campaign", id],
+    queryFn: async () => {
+      if (!id) throw new Error("Campaign ID is required");
+      return campaignApi.get(id);
+    },
+    enabled: !!id,
+    staleTime: 10000, // 10 seconds
+    refetchOnWindowFocus: true,
+  });
 
-  // Calculate total raised from mock contributions
-  const totalRaised = campaign
-    ? mockContributions
-        .filter((c) => c.campaign_id === campaign.id)
-        .reduce((sum, c) => sum + c.amount, 0)
-    : 0;
+  const campaign = data?.campaign;
+  const statistics = data?.statistics;
 
+  // Handle missing campaign
   useEffect(() => {
-    if (!slug || !campaign) {
+    if (error) {
       toast({
         title: "Campaign not found",
         description: "This campaign doesn't exist or has been removed",
         variant: "destructive",
       });
-      navigate("/");
     }
-  }, [slug, campaign, navigate, toast]);
+  }, [error, toast]);
 
   const handlePayment = () => {
     setPaymentModalOpen(true);
   };
 
-  const handlePaymentSuccess = (contributionId: string) => {
+  const handlePaymentSuccess = () => {
     toast({
       title: "Thank you!",
       description: "Your contribution has been received.",
     });
-    // Optionally refresh campaign data here
+    // Refetch campaign data to update progress
+    refetch();
   };
 
-  const campaignUrl = `${window.location.origin}/c/${slug}`;
+  const campaignUrl = `${window.location.origin}/c/${id}`;
 
   const shareLink = () => {
     if (navigator.share) {
@@ -89,17 +88,6 @@ const Campaign = () => {
       });
     }
   };
-
-  if (!campaign) {
-    return null;
-  }
-
-  const progress =
-    campaign.goal_amount > 0
-      ? Math.round((totalRaised / campaign.goal_amount) * 100)
-      : 0;
-
-  const themeColor = campaign.theme_color || "#F7931A";
 
   // Dark and light mode toggle
   const [isDark, setIsDark] = useState(() => {
@@ -125,6 +113,39 @@ const Campaign = () => {
 
   const toggleTheme = () => setIsDark(!isDark);
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+          <p className="text-muted-foreground">Loading campaign...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !campaign) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-8 max-w-md text-center space-y-4">
+          <AlertCircle className="w-12 h-12 mx-auto text-destructive" />
+          <h2 className="text-xl font-bold">Campaign Not Found</h2>
+          <p className="text-muted-foreground">
+            This campaign doesn't exist or has been removed.
+          </p>
+          <Button onClick={() => navigate("/explore")}>
+            Browse Campaigns
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  const progress = statistics?.progress_percentage || 0;
+  const themeColor = "#F7931A"; // Bitcoin orange
+
   return (
     <>
       <Helmet>
@@ -142,9 +163,6 @@ const Campaign = () => {
           property="og:description"
           content={campaign.description || `Support ${campaign.title}`}
         />
-        {campaign.cover_image_url && (
-          <meta property="og:image" content={campaign.cover_image_url} />
-        )}
 
         {/* Twitter */}
         <meta property="twitter:card" content="summary_large_image" />
@@ -154,9 +172,6 @@ const Campaign = () => {
           property="twitter:description"
           content={campaign.description || `Support ${campaign.title}`}
         />
-        {campaign.cover_image_url && (
-          <meta property="twitter:image" content={campaign.cover_image_url} />
-        )}
       </Helmet>
 
       <div className="min-h-screen bg-background">
@@ -165,7 +180,7 @@ const Campaign = () => {
           <div className="container mx-auto px-4 py-4 flex items-center justify-between">
             <div
               className="flex items-center gap-2 cursor-pointer"
-              onClick={() => navigate("/app")}
+              onClick={() => navigate("/")}
             >
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                 <Bitcoin className="w-5 h-5 text-primary-foreground" />
@@ -196,25 +211,13 @@ const Campaign = () => {
 
         <div className="container mx-auto px-4 py-8 max-w-2xl">
           <Card className="overflow-hidden">
-            {/* Cover Image */}
-            {campaign.cover_image_url && (
-              <div className="w-full h-64 overflow-hidden">
-                <img
-                  src={campaign.cover_image_url}
-                  alt={campaign.title}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            )}
-
             <div className="p-6 space-y-6">
               {/* Title & Description */}
               <div>
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <h1 className="text-3xl font-bold flex-1">{campaign.title}</h1>
                   <Badge variant="secondary" className="shrink-0">
-                    {categoryLabels[campaign.category || "other"]?.emoji}{" "}
-                    {categoryLabels[campaign.category || "other"]?.label}
+                    {campaign.status === "active" ? "Active" : campaign.status}
                   </Badge>
                 </div>
                 {campaign.description && (
@@ -232,17 +235,29 @@ const Campaign = () => {
                       className="text-3xl font-bold"
                       style={{ color: themeColor }}
                     >
-                      {totalRaised.toLocaleString()} sats
+                      {campaign.current_amount.toLocaleString()} {campaign.currency}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      raised of {campaign.goal_amount.toLocaleString()} sats goal
+                      raised of {campaign.target_amount.toLocaleString()} {campaign.currency} goal
                     </p>
                   </div>
                   <p className="text-2xl font-semibold text-muted-foreground">
-                    {progress}%
+                    {Math.round(progress)}%
                   </p>
                 </div>
                 <Progress value={progress} className="h-3" />
+
+                {/* Statistics */}
+                {statistics && (
+                  <div className="flex gap-4 text-sm text-muted-foreground">
+                    <span>{statistics.paid_contributions} contributions</span>
+                    {statistics.is_goal_reached && (
+                      <Badge variant="default" className="bg-green-500">
+                        Goal Reached!
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Lightning Payment Info */}
@@ -264,9 +279,12 @@ const Campaign = () => {
                   size="lg"
                   className="w-full bg-bitcoin hover:bg-bitcoin/90 text-white gap-2"
                   onClick={handlePayment}
+                  disabled={campaign.status !== "active"}
                 >
                   <Zap className="w-5 h-5" />
-                  Contribute with Lightning
+                  {campaign.status === "active"
+                    ? "Contribute with Lightning"
+                    : `Campaign ${campaign.status}`}
                 </Button>
               </div>
 

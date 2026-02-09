@@ -23,18 +23,18 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const ProfileSettings = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, wallet } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   
   // Mock profile data
-  const [username, setUsername] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("demo_user");
+  const [fullName, setFullName] = useState("Demo User");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bitcoinWalletType, setBitcoinWalletType] = useState("internal");
-  const [lightningAddress, setLightningAddress] = useState("");
-  const [onchainAddress, setOnchainAddress] = useState("");
+  const [lightningAddress, setLightningAddress] = useState("demo@crowdpay.me");
+  const [onchainAddress, setOnchainAddress] = useState("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh");
   const [emailNotifications, setEmailNotifications] = useState(true);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -58,7 +58,6 @@ const ProfileSettings = () => {
   };
 
   const handleDeleteAccount = () => {
-    // In demo mode, just sign out and show toast
     toast({
       title: "Account deleted",
       description: "Your account has been deleted.",

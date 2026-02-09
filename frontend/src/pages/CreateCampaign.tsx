@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { useCampaigns } from "@/contexts/CampaignsContext";
+import { useBtcRate, kesToSats } from "@/hooks/useBtcRate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,8 +43,9 @@ const categoryLabels: Record<string, { label: string; emoji: string }> = {
 const CreateCampaign = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { addCampaign } = useCampaigns();
+  const { user, session } = useAuth();
+  const { createCampaign, refetchCampaigns } = useCampaigns();
+  const { kesToSats: kesToSatsRate } = useBtcRate();
   const [loading, setLoading] = useState(false);
   const [coverImagePreview, setCoverImagePreview] = useState<string>("");
 
@@ -98,39 +100,54 @@ const CreateCampaign = () => {
   };
 
   const handleConfirmCreate = async () => {
-    if (!user) return;
+    if (!user || !session?.access_token) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to create a campaign",
+        variant: "destructive",
+      });
+      navigate("/signin");
+      return;
+    }
+
     setShowConfirmDialog(false);
     setLoading(true);
 
-    // Create new campaign and add to context
-    const newCampaign = {
-      id: `campaign-${Date.now()}`,
-      user_id: user.id,
-      title: formData.title,
-      slug: formData.slug || formData.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-      description: formData.description,
-      goal_amount: formData.goal_amount ? parseFloat(formData.goal_amount) * 100000 : 0, // Convert to satoshis
-      mode: formData.mode,
-      category: formData.category,
-      cover_image_url: coverImagePreview || null,
-      theme_color: formData.theme_color,
-      is_public: formData.is_public,
-      created_at: new Date().toISOString(),
-      end_date: formData.end_date || undefined,
-      event_location: formData.event_location || undefined,
-    };
+    try {
+      // Convert KES to satoshis for the target amount
+      const targetInSats = formData.goal_amount
+        ? kesToSats(parseFloat(formData.goal_amount), kesToSatsRate)
+        : 1000; // Default minimum if not specified
 
-    addCampaign(newCampaign);
+      // Create campaign via backend API
+      const newCampaign = await createCampaign({
+        title: formData.title,
+        description: formData.description || "No description provided.",
+        target_amount: targetInSats,
+        currency: "SATS",
+        end_date: formData.end_date || undefined,
+      });
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+      // Refetch campaigns to update the list
+      refetchCampaigns();
 
-    toast({
-      title: "Event created!",
-      description: "Your event is now live.",
-    });
+      toast({
+        title: "Campaign created!",
+        description: "Your campaign is now live.",
+      });
 
-    navigate("/my-links");
-    setLoading(false);
+      // Navigate to the new campaign page
+      navigate(`/c/${newCampaign.id}`);
+    } catch (error) {
+      console.error("Error creating campaign:", error);
+      toast({
+        title: "Failed to create campaign",
+        description: error instanceof Error ? error.message : "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';

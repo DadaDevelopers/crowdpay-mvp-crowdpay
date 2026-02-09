@@ -81,8 +81,11 @@ def create_app():
 
     return app
 
+# Create app instance for module-level import (e.g., `from app import app`)
+# This allows both direct import and factory pattern usage
+app = create_app()
+
 if __name__ == '__main__':
-    app = create_app()
     app.run(
         host='0.0.0.0',
         port=5000,

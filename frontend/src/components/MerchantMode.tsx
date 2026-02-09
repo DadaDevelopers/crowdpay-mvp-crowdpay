@@ -26,7 +26,7 @@ export const MerchantMode = ({ onPaymentClick, goalAmount, totalRaised, contribu
     return {
       amount: contribution.payment_method === "mpesa" 
         ? `${contribution.amount.toLocaleString()} KES`
-        : `${(contribution.amount * 150).toLocaleString()} Sats`, // Mock conversion
+        : `${(contribution.amount * 150).toLocaleString()} Sats`,
       method: contribution.payment_method === "mpesa" ? "M-Pesa" : "Lightning",
       contributor: contribution.contributor_name,
       time: timeAgo,

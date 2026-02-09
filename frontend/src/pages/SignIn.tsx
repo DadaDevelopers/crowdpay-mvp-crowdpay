@@ -7,8 +7,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { Helmet } from "react-helmet-async";
-import logo from "@/assets/logo.png";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import SubNav from "@/components/SubNav";
 import Footer from "@/components/Footer";
 
@@ -16,6 +15,7 @@ const SignIn = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signIn, user, loading } = useAuth();
@@ -39,14 +39,26 @@ const SignIn = () => {
       return;
     }
 
-    await signIn(email, password);
+    setSubmitting(true);
+    try {
+      await signIn(email, password);
 
-    toast({
-      title: "Welcome back!",
-      description: "You’re among the first to see this as we continue development.",
-    });
+      toast({
+        title: "Welcome back!",
+        description: "You have signed in successfully.",
+      });
 
-    navigate("/app");
+      navigate("/app");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Sign in failed. Please check your credentials.";
+      toast({
+        title: "Sign In Failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Show loading state while checking session
@@ -75,7 +87,7 @@ const SignIn = () => {
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
               <p className="text-muted-foreground">
-                Sign in to manage your payment links
+                Sign in to manage your campaigns
               </p>
             </div>
 
@@ -111,19 +123,28 @@ const SignIn = () => {
                 </button>
               </div>
 
-              <Button type="submit" className="w-full">
-                Sign In
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing In...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
               </Button>
 
-              <div className="text-center text-sm text-muted-foreground">
+              <div className="text-center text-sm text-muted-foreground space-y-2">
+                <p>
+                  <Link to="/forgot-password" className="text-primary hover:underline font-medium">
+                    Forgot your password?
+                  </Link>
+                </p>
                 <p>
                   Don't have an account?{" "}
                   <Link to="/signup" className="text-primary hover:underline font-medium">
                     Create Account
                   </Link>
-                </p>
-                <p className="mt-4 p-3 bg-muted/50 rounded-md">
-                  {/* Demo Mode message removed */}
                 </p>
               </div>
             </form>

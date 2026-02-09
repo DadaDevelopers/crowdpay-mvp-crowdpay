@@ -283,6 +283,56 @@ def refresh():
         return jsonify({'error': 'Failed to refresh token'}), 401
 
 
+@auth_bp.route('/forgot-password', methods=['POST'])
+def forgot_password():
+    """Send password reset email via Supabase"""
+    try:
+        data = request.get_json()
+        email = data.get('email')
+
+        if not email:
+            return jsonify({'error': 'Email is required'}), 400
+
+        supabase.auth.reset_password_email(email)
+
+        return jsonify({
+            'message': 'If an account with that email exists, a password reset link has been sent.'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        # Always return success to avoid email enumeration
+        return jsonify({
+            'message': 'If an account with that email exists, a password reset link has been sent.'
+        }), 200
+
+
+@auth_bp.route('/reset-password', methods=['POST'])
+def reset_password():
+    """Reset password using token from email link"""
+    try:
+        data = request.get_json()
+        access_token = data.get('access_token')
+        new_password = data.get('new_password')
+
+        if not access_token or not new_password:
+            return jsonify({'error': 'Access token and new password are required'}), 400
+
+        if len(new_password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters long'}), 400
+
+        result = supabase.auth.update_user(access_token, {"password": new_password})
+
+        if not result or not result.user:
+            return jsonify({'error': 'Failed to reset password. The link may have expired.'}), 400
+
+        return jsonify({'message': 'Password reset successfully'}), 200
+
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
+        return jsonify({'error': 'Failed to reset password. Please try again.'}), 500
+
+
 @auth_bp.route('/users', methods=['GET'])
 def get_all_users():
     """Get all users from the database (admin only - add auth check in production)"""

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
 interface WalletData {
   lightningAddress: string;
   onchainAddress: string;
@@ -7,15 +9,20 @@ interface WalletData {
   btcBalance: number;
 }
 
-interface MockUser {
+interface User {
   id: string;
   email: string;
   username?: string;
 }
 
+interface Session {
+  access_token: string;
+  refresh_token?: string;
+}
+
 interface AuthContextType {
-  user: MockUser | null;
-  session: any;
+  user: User | null;
+  session: Session | null;
   loading: boolean;
   wallet: WalletData | null;
   setWallet: (wallet: WalletData) => void;
@@ -24,12 +31,18 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
-// No defaultWallet: wallet should be null unless created
+const defaultWallet: WalletData = {
+  lightningAddress: "",
+  onchainAddress: "",
+  walletType: null,
+  btcBalance: 0,
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const MockAuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<MockUser | null>(null);
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [wallet, setWalletState] = useState<WalletData | null>(null);
 
@@ -38,9 +51,13 @@ export const MockAuthProvider = ({ children }: { children: React.ReactNode }) =>
     try {
       // Restore user session
       const storedUser = localStorage.getItem("crowdpay_user");
-      if (storedUser) {
+      const storedSession = localStorage.getItem("crowdpay_session");
+
+      if (storedUser && storedSession) {
         const parsedUser = JSON.parse(storedUser);
+        const parsedSession = JSON.parse(storedSession);
         setUser(parsedUser);
+        setSession(parsedSession);
       }
 
       // Restore wallet data
@@ -48,13 +65,12 @@ export const MockAuthProvider = ({ children }: { children: React.ReactNode }) =>
       if (storedWallet) {
         const parsedWallet = JSON.parse(storedWallet);
         setWalletState(parsedWallet);
-      } else {
-        setWalletState(null);
       }
     } catch (error) {
       console.error("Error restoring session:", error);
       // Clear corrupted data
       localStorage.removeItem("crowdpay_user");
+      localStorage.removeItem("crowdpay_session");
       localStorage.removeItem("crowdpay_wallet");
     } finally {
       setLoading(false);
@@ -72,68 +88,129 @@ export const MockAuthProvider = ({ children }: { children: React.ReactNode }) =>
   };
 
   const signIn = async (email: string, password: string) => {
-    const mockUser = { 
-      id: "mock-user-id", 
-      email,
-      username: email.split("@")[0]
-    };
-    setUser(mockUser);
-    try {
-      localStorage.setItem("crowdpay_user", JSON.stringify(mockUser));
-      // Also save session timestamp for future use
-      localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
-    } catch (error) {
-      console.error("Error saving session:", error);
+    const response = await fetch(`${API_URL}/api/auth/signin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Sign in failed");
     }
+
+    const userData: User = {
+      id: data.user.id,
+      email: data.user.email,
+      username: data.user.username || email.split("@")[0],
+    };
+
+    const sessionData: Session = {
+      access_token: data.session?.access_token,
+      refresh_token: data.session?.refresh_token,
+    };
+
+    setUser(userData);
+    setSession(sessionData);
+
+    localStorage.setItem("crowdpay_user", JSON.stringify(userData));
+    localStorage.setItem("crowdpay_session", JSON.stringify(sessionData));
+    localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
   };
 
   const signUp = async (email: string, password: string, username: string) => {
-    const mockUser = { 
-      id: "mock-user-id", 
-      email,
-      username
-    };
-    setUser(mockUser);
-    try {
-      localStorage.setItem("crowdpay_user", JSON.stringify(mockUser));
+    const response = await fetch(`${API_URL}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        username,
+        password_confirmation: password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Sign up failed");
+    }
+
+    // If signup returned a session directly (no email confirmation required), use it
+    if (data.session?.access_token) {
+      const userData: User = {
+        id: data.user.id,
+        email: data.user.email,
+        username: data.user.username || username,
+      };
+
+      const sessionData: Session = {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      };
+
+      setUser(userData);
+      setSession(sessionData);
+
+      localStorage.setItem("crowdpay_user", JSON.stringify(userData));
+      localStorage.setItem("crowdpay_session", JSON.stringify(sessionData));
       localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
-    } catch (error) {
-      console.error("Error saving session:", error);
+    } else {
+      // Email confirmation required - sign in after signup
+      await signIn(email, password);
     }
   };
 
   const signOut = async () => {
-    setUser(null);
     try {
-      localStorage.removeItem("crowdpay_user");
-      localStorage.removeItem("crowdpay_session_timestamp");
-      // Optionally clear wallet on sign out, or keep it
-      // localStorage.removeItem("crowdpay_wallet");
+      if (session?.access_token) {
+        await fetch(`${API_URL}/api/auth/signout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+      }
     } catch (error) {
-      console.error("Error clearing session:", error);
+      console.error("Sign out error:", error);
+    } finally {
+      setUser(null);
+      setSession(null);
+      setWalletState(defaultWallet);
+      localStorage.removeItem("crowdpay_user");
+      localStorage.removeItem("crowdpay_session");
+      localStorage.removeItem("crowdpay_session_timestamp");
+      localStorage.removeItem("crowdpay_wallet");
     }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      session: user ? {} : null, 
-      loading, 
-      wallet, 
-      setWallet, 
-      signIn,
-      signUp,
-      signOut
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        wallet,
+        setWallet,
+        signIn,
+        signUp,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
 
+// Keep backward-compatible export
+export const MockAuthProvider = AuthProvider;
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within a MockAuthProvider");
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

@@ -2,26 +2,26 @@
 
 A Kenya-focused crowdfunding platform that bridges M-Pesa and Bitcoin/Lightning Network, enabling seamless fundraising with multiple payment options.
 
-🔗 **Live Demo**: [https://crowdpay.netlify.app/](https://crowdpay.netlify.app/)
-
 ## Overview
 
 CrowdPay allows users to create customizable fundraising events that accept both local currency (KES via M-Pesa) and Bitcoin (Lightning & On-chain). Event creators receive instant Bitcoin settlement while contributors can pay using their preferred method.
 
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript
+- **Frontend**: React 18 + TypeScript + Vite
 - **Styling**: Tailwind CSS + shadcn/ui components
 - **Routing**: React Router v6
 - **State Management**: TanStack Query (React Query)
 - **Animations**: Framer Motion
-- **Backend**: Flask Python
-- **Bitcoin**: Bitnob API (Lightning Network integration)
+- **Backend**: Flask Python (REST API)
+- **Payments**: LNbits (Lightning Network integration)
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth via backend endpoints
 
 ## Project Structure
 
 ```
-src/
+frontend/src/
 ├── assets/              # Static assets (logo, images)
 ├── components/
 │   ├── ui/              # Reusable UI components (shadcn/ui)
@@ -33,15 +33,16 @@ src/
 │   ├── AddContributionDialog.tsx
 │   ├── AppLayout.tsx    # Main layout wrapper with sidebar
 │   ├── AppSidebar.tsx   # Navigation sidebar
+│   ├── LightningPaymentModal.tsx  # Lightning-specific payment modal
 │   ├── ModeControl.tsx  # Campaign mode switcher
 │   ├── PaymentModal.tsx # Universal payment modal (M-Pesa/Bitcoin)
 │   ├── QRCodeDialog.tsx # QR code display for payments
 │   ├── ShareButtons.tsx # Social sharing functionality
 │   └── ...
 ├── contexts/
-│   └── AuthContext.tsx  # Authentication state management
-├── data/
-│   └── demoData.ts      # Demo/sample data
+│   ├── AuthContext.tsx       # Authentication type definitions
+│   ├── CampaignsContext.tsx  # Campaign data via React Query + backend API
+│   └── MockAuthContext.tsx   # Auth context calling backend auth endpoints
 ├── hooks/
 │   ├── use-mobile.tsx   # Mobile detection hook
 │   ├── use-toast.ts     # Toast notifications hook
@@ -65,16 +66,23 @@ src/
 │   ├── ProfileSettings.tsx # User profile settings
 │   ├── Support.tsx      # Help & support page
 │   └── Wallet.tsx       # Bitcoin wallet management
+├── services/
+│   └── api.ts           # Central API service (campaigns, contributions, invoices, wallet)
 ├── App.tsx              # Main app with routing
 ├── App.css              # Global styles
 ├── index.css            # Tailwind base + design tokens
 └── main.tsx             # App entry point
 
-supabase/
-├── config.toml          # Supabase configuration
-└── functions/
-    ├── create-blink-wallet/   # Edge function for wallet creation
-    └── create-lightning-invoice/ # Edge function for invoices
+backend/
+├── app.py               # Flask application entry point
+├── config.py            # Configuration management
+├── requirements.txt     # Python dependencies
+├── models/              # Pydantic data models
+├── routes/              # API route blueprints (campaigns, contributions, payments, auth)
+├── services/            # Business logic (LNbits, polling, Supabase, auth)
+├── migrations/          # Database migration scripts
+├── supabase_setup.sql   # Database schema
+└── supabase_rls.sql     # Row Level Security policies
 
 public/
 ├── favicon.ico
@@ -90,8 +98,8 @@ public/
 - **Mode C (Activism)**: Privacy-focused with anonymous donations
 
 ### Payment Options
-- M-Pesa (KES) with automatic BTC conversion via Bitnob API
-- Bitcoin Lightning Network (instant)
+- M-Pesa (KES) with automatic BTC conversion
+- Bitcoin Lightning Network (instant) via LNbits
 - Bitcoin On-chain
 
 ### Event Features
@@ -103,10 +111,29 @@ public/
 
 ### User Features
 - Dashboard with campaign overview
-- Wallet management (Blink integration)
+- Wallet management
 - Contribution history
 - Notification system
 - Profile customization
+
+## API Integration
+
+The frontend communicates with the Flask backend through a central API service (`src/services/api.ts`):
+
+- **`campaignApi`** - CRUD operations for campaigns (`/api/campaigns`)
+- **`contributionApi`** - Create contributions and poll payment status (`/api/contributions`)
+- **`invoiceApi`** - Create and check Lightning invoices (`/api/invoice`)
+- **`walletApi`** - Wallet balance and payment history (`/api/wallet`)
+
+### Payment Flow
+
+1. User opens a campaign page (`/c/:id`)
+2. Clicks "Contribute with Lightning"
+3. `PaymentModal` creates a contribution via `POST /api/contributions`
+4. Backend generates an LNbits Lightning invoice and starts server-side polling
+5. Frontend displays a QR code with the BOLT11 invoice
+6. Frontend polls `GET /api/contributions/<id>/status` for payment confirmation
+7. On payment confirmation, backend updates the campaign's `current_amount`
 
 ## Design System
 
@@ -128,22 +155,30 @@ The app uses a consistent design system defined in:
 ### Prerequisites
 - Node.js 18+
 - npm or bun
+- Python 3.9+ (for backend)
+- LNbits wallet (demo.lnbits.com for testing)
+- Supabase account
 
 ### Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/DadaDevelopers/crowdpay-mvp-crowdpay
-
-# Navigate to project directory
 cd crowdpay-mvp-crowdpay
 
+# --- Backend setup ---
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env      # Fill in Supabase & LNbits credentials
+python app.py             # Runs on http://localhost:5000
 
-# Install dependencies
+# --- Frontend setup ---
+cd ../frontend
 npm install
-
-# Start development server
-npm run dev
+cp .env.example .env      # Set VITE_API_URL=http://localhost:5000
+npm run dev               # Runs on http://localhost:5173
 ```
 
 ### Scripts
@@ -157,11 +192,13 @@ npm run lint     # Run ESLint
 
 ## Architecture Decisions
 
-1. **Component-Based**: Small, focused components for reusability
-2. **Design System First**: All styling through semantic tokens
-3. **Type Safety**: Full TypeScript with auto-generated Supabase types
-4. **Mobile-First**: Responsive design with mobile detection hooks
-5. **SEO Optimized**: React Helmet for meta tags and Open Graph
+1. **Backend-First Data**: All data fetched from Flask API, no mock/demo data in frontend
+2. **React Query**: Server state managed via TanStack Query for caching, refetching, and optimistic updates
+3. **LNbits over Bitnob**: Self-hosted Lightning payment processing for better control and lower fees
+4. **Component-Based**: Small, focused components for reusability
+5. **Design System First**: All styling through semantic tokens
+6. **Type Safety**: Full TypeScript with auto-generated Supabase types
+7. **Mobile-First**: Responsive design with mobile detection hooks
 
 ## Contributing
 

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { demoContributions } from "@/data/demoData";
 
 interface Contribution {
   id: string;
@@ -27,15 +26,9 @@ export const useCampaignContributions = (campaignId: string) => {
 
         if (error) throw error;
 
-        // Check if this is a demo campaign
-        const isDemoCampaign = campaignId.startsWith("demo-");
-        const demoContribs = isDemoCampaign 
-          ? demoContributions.filter(c => c.campaign_id === campaignId)
-          : [];
-
-        const allContributions = [...(data as Contribution[]) || [], ...demoContribs];
+        const allContributions = (data as Contribution[]) || [];
         setContributions(allContributions);
-        
+
         // Calculate total raised
         const total = allContributions.reduce((sum, contribution) => sum + Number(contribution.amount), 0);
         setTotalRaised(total);
@@ -48,30 +41,27 @@ export const useCampaignContributions = (campaignId: string) => {
 
     fetchContributions();
 
-    // Only set up realtime for non-demo campaigns
-    if (!campaignId.startsWith("demo-")) {
-      const channel = supabase
-        .channel(`contributions-${campaignId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "contributions",
-            filter: `campaign_id=eq.${campaignId}`,
-          },
-          (payload) => {
-            const newContribution = payload.new as Contribution;
-            setContributions((prev) => [newContribution, ...prev]);
-            setTotalRaised((prev) => prev + Number(newContribution.amount));
-          }
-        )
-        .subscribe();
+    const channel = supabase
+      .channel(`contributions-${campaignId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "contributions",
+          filter: `campaign_id=eq.${campaignId}`,
+        },
+        (payload) => {
+          const newContribution = payload.new as Contribution;
+          setContributions((prev) => [newContribution, ...prev]);
+          setTotalRaised((prev) => prev + Number(newContribution.amount));
+        }
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [campaignId]);
 
   return { contributions, loading, totalRaised };
