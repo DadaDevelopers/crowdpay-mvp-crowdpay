@@ -118,10 +118,16 @@ def signup():
         except Exception as username_error:
             logger.warning(f"Username check skipped: {str(username_error)}")
 
-        # Create user in Supabase Auth
+        # Create user in Supabase Auth with email redirect configuration
         res = supabase.auth.sign_up({
             "email": signup_data.email,
-            "password": signup_data.password
+            "password": signup_data.password,
+            "options": {
+                "data": {
+                    "username": signup_data.username
+                },
+                "email_redirect_to": "http://localhost:8080/email-confirmed"
+            }
         })
 
         if res.user is None:
@@ -131,12 +137,20 @@ def signup():
             }), 400
 
         # Save extra user info in your users table
+        # IMPORTANT: Only save if user was created successfully
         user_data = {
             "id": res.user.id,
             "email": signup_data.email,
             "username": signup_data.username
         }
-        supabase.table("users").insert(user_data).execute()
+        
+        try:
+            supabase.table("users").insert(user_data).execute()
+        except Exception as db_error:
+            logger.error(f"Failed to save user data: {str(db_error)}")
+            # User exists in Auth but not in users table
+            # This could happen if email confirmation is required
+            # We'll handle this in the email confirmation callback
 
         # Check if email confirmation is required
         message = "User registered successfully"
@@ -152,10 +166,26 @@ def signup():
 
     except Exception as e:
         logger.error(f"Signup error: {str(e)}")
-        return jsonify({
-            'error': 'Registration failed. Please try again.',
-            'field': 'general'
-        }), 500
+        
+        # Better error handling for email sending issues
+        error_message = str(e)
+        
+        if "Error sending confirmation email" in error_message:
+            return jsonify({
+                'error': 'Failed to send verification email. Please contact support or try again later.',
+                'field': 'general',
+                'details': 'Email service configuration issue'
+            }), 500
+        elif "User already registered" in error_message:
+            return jsonify({
+                'error': 'This email is already registered',
+                'field': 'email'
+            }), 409
+        else:
+            return jsonify({
+                'error': 'Registration failed. Please try again.',
+                'field': 'general'
+            }), 500
 
 
 @auth_bp.route('/signin', methods=['POST'])
