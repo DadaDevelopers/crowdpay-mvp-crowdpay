@@ -2,12 +2,13 @@
  * Payment Modal for CrowdPay
  *
  * Lightning-only payment flow using LNbits backend.
+ * Supports SATs/KES currency toggle with live conversion.
  * M-Pesa tab is kept for UI consistency but marked as "Coming Soon".
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Check, Loader2, Zap } from "lucide-react";
+import { Copy, Check, Loader2, Zap, ArrowLeftRight } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog,
@@ -20,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useBtcRate, kesToSats } from "@/hooks/useBtcRate";
+import { useBtcRate, kesToSats, satsToKes } from "@/hooks/useBtcRate";
 import mpesaLogo from "@/assets/mpesa-logo.png";
 import bitcoinLogo from "@/assets/bitcoin-logo.png";
 
@@ -36,6 +37,7 @@ interface PaymentModalProps {
 }
 
 type PaymentState = "input" | "invoice" | "processing" | "success" | "error";
+type CurrencyMode = "KES" | "SATS";
 
 export const PaymentModal = ({
   open,
@@ -47,6 +49,7 @@ export const PaymentModal = ({
   const [paymentState, setPaymentState] = useState<PaymentState>("input");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("1000");
+  const [currencyMode, setCurrencyMode] = useState<CurrencyMode>("KES");
   const [contributorName, setContributorName] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -54,25 +57,49 @@ export const PaymentModal = ({
   const [contributionId, setContributionId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [finalSatAmount, setFinalSatAmount] = useState(0);
 
   const { toast } = useToast();
   const { kesToSats: kesToSatsRate, btcToKes, loading: rateLoading } = useBtcRate();
 
-  const kesAmount = parseInt(amount) || 0;
-  const satAmount = kesAmount > 0 ? kesToSats(kesAmount, kesToSatsRate) : 0;
+  // Calculate amounts based on currency mode
+  const rawAmount = parseInt(amount) || 0;
+  const satAmount = currencyMode === "KES"
+    ? (rawAmount > 0 ? kesToSats(rawAmount, kesToSatsRate) : 0)
+    : rawAmount;
+  const kesEquivalent = currencyMode === "SATS"
+    ? (rawAmount > 0 ? satsToKes(rawAmount, kesToSatsRate) : 0)
+    : rawAmount;
 
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setPaymentState("input");
       setAmount("1000");
+      setCurrencyMode("KES");
       setContributorName("");
       setIsAnonymous(false);
       setInvoice("");
       setContributionId("");
       setError("");
+      setFinalSatAmount(0);
     }
   }, [open]);
+
+  // Toggle currency mode
+  const toggleCurrency = () => {
+    if (currencyMode === "KES") {
+      // Switch to SATS: convert current KES to SATS
+      const sats = rawAmount > 0 ? kesToSats(rawAmount, kesToSatsRate) : 0;
+      setAmount(sats > 0 ? sats.toString() : "");
+      setCurrencyMode("SATS");
+    } else {
+      // Switch to KES: convert current SATS to KES
+      const kes = rawAmount > 0 ? Math.round(satsToKes(rawAmount, kesToSatsRate)) : 0;
+      setAmount(kes > 0 ? kes.toString() : "");
+      setCurrencyMode("KES");
+    }
+  };
 
   // Poll for payment status
   const pollPaymentStatus = useCallback(async () => {
@@ -88,7 +115,7 @@ export const PaymentModal = ({
         setPaymentState("success");
         toast({
           title: "Payment Successful!",
-          description: `Thank you for your ${satAmount.toLocaleString()} sats contribution!`,
+          description: `Thank you for your ${finalSatAmount.toLocaleString()} sats contribution!`,
         });
         onPaymentSuccess?.(contributionId);
         return true;
@@ -105,7 +132,7 @@ export const PaymentModal = ({
       console.error("Error polling payment status:", err);
       return false;
     }
-  }, [contributionId, satAmount, toast, onPaymentSuccess]);
+  }, [contributionId, finalSatAmount, toast, onPaymentSuccess]);
 
   // Start polling when invoice is displayed
   useEffect(() => {
@@ -150,10 +177,10 @@ export const PaymentModal = ({
       return;
     }
 
-    if (satAmount < 100) {
+    if (satAmount < 1) {
       toast({
         title: "Invalid amount",
-        description: "Minimum contribution is 100 satoshis",
+        description: "Minimum contribution is 1 satoshi",
         variant: "destructive",
       });
       return;
@@ -161,6 +188,7 @@ export const PaymentModal = ({
 
     setIsLoading(true);
     setError("");
+    setFinalSatAmount(satAmount);
 
     try {
       const response = await fetch(`${API_URL}/api/contributions`, {
@@ -203,7 +231,6 @@ export const PaymentModal = ({
   };
 
   const handleMpesaPay = () => {
-    // M-Pesa is not yet implemented with LNbits
     toast({
       title: "Coming Soon",
       description: "M-Pesa integration will be available soon. Please use Bitcoin for now.",
@@ -340,28 +367,60 @@ export const PaymentModal = ({
                     </Label>
                   </div>
 
+                  {/* Amount input with currency toggle */}
                   <div className="space-y-2">
-                    <Label htmlFor="btc-amount">Amount (KES)</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="btc-amount">
+                        Amount ({currencyMode})
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleCurrency}
+                        className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <ArrowLeftRight className="w-3 h-3" />
+                        Switch to {currencyMode === "KES" ? "SATS" : "KES"}
+                      </Button>
+                    </div>
                     <Input
                       id="btc-amount"
                       type="number"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
-                      placeholder="1000"
+                      placeholder={currencyMode === "KES" ? "1000" : "8590"}
+                      min={currencyMode === "SATS" ? 1 : 1}
                     />
                   </div>
 
+                  {/* Conversion display */}
                   <div className="bg-muted rounded-lg p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Amount in Bitcoin</span>
+                      <span className="text-sm text-muted-foreground">
+                        {currencyMode === "KES" ? "Amount in Bitcoin" : "Amount in KES"}
+                      </span>
                       <motion.span
-                        className="font-bold text-bitcoin animate-pulse"
-                        animate={{ opacity: [0.7, 1, 0.7] }}
-                        transition={{ duration: 2, repeat: Infinity }}
+                        className="font-bold text-bitcoin"
+                        key={satAmount}
+                        initial={{ opacity: 0.5 }}
+                        animate={{ opacity: 1 }}
                       >
-                        {satAmount.toLocaleString()} Sats
+                        {currencyMode === "KES"
+                          ? `${satAmount.toLocaleString()} sats`
+                          : `KES ${Math.round(kesEquivalent).toLocaleString()}`}
                       </motion.span>
                     </div>
+                    {currencyMode === "KES" && satAmount > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        = {satAmount.toLocaleString()} sats
+                      </p>
+                    )}
+                    {currencyMode === "SATS" && rawAmount > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        = KES {Math.round(kesEquivalent).toLocaleString()}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground mt-2">
                       {rateLoading ? "Loading live rate..." : `1 BTC = ${btcToKes.toLocaleString()} KES`}
                     </p>
@@ -371,7 +430,7 @@ export const PaymentModal = ({
 
                   <Button
                     onClick={createLightningInvoice}
-                    disabled={isLoading || satAmount < 100 || !campaignId}
+                    disabled={isLoading || satAmount < 1 || !campaignId}
                     className="w-full bg-bitcoin hover:bg-bitcoin/90 text-bitcoin-foreground gap-2 group"
                     size="lg"
                   >
@@ -389,7 +448,7 @@ export const PaymentModal = ({
                           whileHover={{ scale: 1.15, rotate: 360 }}
                           transition={{ type: "spring", stiffness: 300 }}
                         />
-                        Pay with Lightning
+                        Pay {satAmount.toLocaleString()} sats with Lightning
                       </>
                     )}
                   </Button>
@@ -408,8 +467,11 @@ export const PaymentModal = ({
                     <p className="text-sm text-center text-muted-foreground">
                       Scan QR code with your Lightning wallet
                     </p>
+                    <p className="text-lg font-bold text-bitcoin">
+                      {finalSatAmount.toLocaleString()} sats
+                    </p>
                     <div className="bg-white p-4 rounded-xl">
-                      <QRCodeSVG value={invoice} size={200} level="H" includeMargin={false} />
+                      <QRCodeSVG value={invoice} size={220} level="H" includeMargin={false} />
                     </div>
 
                     <div className="w-full space-y-2">
@@ -447,7 +509,7 @@ export const PaymentModal = ({
                   </div>
                   <h3 className="text-xl font-bold text-green-600">Payment Successful!</h3>
                   <p className="text-center text-muted-foreground">
-                    Thank you for your {satAmount.toLocaleString()} sats contribution!
+                    Thank you for your {finalSatAmount.toLocaleString()} sats contribution!
                   </p>
                   <Button onClick={onClose} className="w-full bg-green-500 hover:bg-green-600">
                     Done

@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { profileApi } from "@/services/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Helmet } from "react-helmet-async";
-import { Loader2, User, Wallet, Shield, Bell, Zap, Bitcoin } from "lucide-react";
+import { Loader2, User, Wallet, Shield, Bell, Zap, Bitcoin, CheckCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
@@ -23,33 +24,125 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const ProfileSettings = () => {
-  const { user, signOut, wallet } = useAuth();
+  const { user, session, signOut, setWallet } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  
-  // Mock profile data
-  const [username, setUsername] = useState("demo_user");
-  const [fullName, setFullName] = useState("Demo User");
-  const [avatarUrl, setAvatarUrl] = useState("");
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  // Profile data
+  const [username, setUsername] = useState("");
+  const [fullName, setFullName] = useState("");
   const [bitcoinWalletType, setBitcoinWalletType] = useState("internal");
-  const [lightningAddress, setLightningAddress] = useState("demo@crowdpay.me");
-  const [onchainAddress, setOnchainAddress] = useState("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh");
+  const [lightningAddress, setLightningAddress] = useState("");
+  const [onchainAddress, setOnchainAddress] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
+  const [lightningAddressError, setLightningAddressError] = useState("");
+
+  // Fetch profile from backend on mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!session?.access_token) {
+        setLoadingProfile(false);
+        return;
+      }
+
+      try {
+        const data = await profileApi.get(session.access_token);
+        const profile = data.user;
+        setUsername(profile.username || "");
+        setFullName(profile.full_name || "");
+        setLightningAddress(profile.lightning_address || "");
+        setOnchainAddress(profile.onchain_address || "");
+        setBitcoinWalletType(profile.wallet_type || "internal");
+        setEmailNotifications(profile.email_notifications !== false);
+      } catch (err) {
+        console.error("Error loading profile:", err);
+        // Use local user data as fallback
+        if (user) {
+          setUsername(user.username || "");
+        }
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchProfile();
+  }, [session?.access_token, user]);
+
+  // Validate Lightning address format
+  const validateLightningAddress = (address: string): boolean => {
+    if (!address || !address.trim()) {
+      setLightningAddressError("");
+      return true; // Empty is valid (optional field)
+    }
+    const trimmed = address.trim();
+    // user@domain format
+    if (/^[^@]+@[^@]+\.[^@]+$/.test(trimmed)) {
+      setLightningAddressError("");
+      return true;
+    }
+    // LNURL format
+    if (trimmed.toLowerCase().startsWith("lnurl")) {
+      setLightningAddressError("");
+      return true;
+    }
+    setLightningAddressError("Must be user@domain format (e.g. name@getalby.com) or LNURL");
+    return false;
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateLightningAddress(lightningAddress)) {
+      return;
+    }
+
+    if (!session?.access_token) {
+      toast({
+        title: "Not authenticated",
+        description: "Please sign in to save settings",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
-    // Simulate save
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const updateData: Record<string, unknown> = {
+        username: username || undefined,
+        full_name: fullName || undefined,
+        lightning_address: lightningAddress.trim() || null,
+        onchain_address: onchainAddress.trim() || null,
+        wallet_type: bitcoinWalletType,
+        email_notifications: emailNotifications,
+      };
 
-    toast({
-      title: "Success!",
-      description: "Your profile has been updated.",
-    });
-    
-    setLoading(false);
+      await profileApi.update(session.access_token, updateData);
+
+      // Update local wallet context
+      setWallet({
+        lightningAddress: lightningAddress.trim(),
+        onchainAddress: onchainAddress.trim(),
+        walletType: bitcoinWalletType === "lightning" ? "external" : bitcoinWalletType === "internal" ? "blink" : "external",
+        btcBalance: 0,
+      });
+
+      toast({
+        title: "Settings saved",
+        description: "Your profile has been updated successfully.",
+      });
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to save settings",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSignOut = () => {
@@ -66,6 +159,14 @@ const ProfileSettings = () => {
     signOut();
     navigate("/");
   };
+
+  if (loadingProfile) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -115,17 +216,6 @@ const ProfileSettings = () => {
                     className="bg-background"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="avatarUrl">Avatar URL</Label>
-                <Input
-                  id="avatarUrl"
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/avatar.jpg"
-                  className="bg-background"
-                />
               </div>
               <div className="space-y-2">
                 <Label>Email</Label>
@@ -184,13 +274,26 @@ const ProfileSettings = () => {
                   id="lightningAddress"
                   type="text"
                   value={lightningAddress}
-                  onChange={(e) => setLightningAddress(e.target.value)}
+                  onChange={(e) => {
+                    setLightningAddress(e.target.value);
+                    if (lightningAddressError) validateLightningAddress(e.target.value);
+                  }}
+                  onBlur={() => validateLightningAddress(lightningAddress)}
                   placeholder="user@getalby.com or LNURL"
-                  className="bg-background"
+                  className={`bg-background ${lightningAddressError ? "border-destructive" : ""}`}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Your Lightning address for instant Bitcoin payments
-                </p>
+                {lightningAddressError ? (
+                  <p className="text-xs text-destructive">{lightningAddressError}</p>
+                ) : lightningAddress && !lightningAddressError ? (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3 text-green-500" />
+                    Your Lightning address for instant Bitcoin payments
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Your Lightning address for instant Bitcoin payments
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -237,9 +340,9 @@ const ProfileSettings = () => {
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <Button 
-              type="submit" 
-              disabled={loading} 
+            <Button
+              type="submit"
+              disabled={loading}
               className="flex-1 bg-primary hover:bg-primary/90"
             >
               {loading ? (
@@ -253,9 +356,9 @@ const ProfileSettings = () => {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   className="flex-1"
                 >
                   Sign Out
@@ -306,7 +409,7 @@ const ProfileSettings = () => {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
+                    <AlertDialogAction
                       onClick={handleDeleteAccount}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     >

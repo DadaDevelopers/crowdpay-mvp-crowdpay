@@ -98,9 +98,9 @@ def create_contribution():
             amount = btc_to_sats(amount)
             currency = 'SATS'
 
-        # Validate minimum amount (100 sats)
-        if amount < 100:
-            return jsonify({'error': 'Minimum contribution is 100 satoshis'}), 400
+        # Validate minimum amount (1 sat)
+        if amount < 1:
+            return jsonify({'error': 'Minimum contribution is 1 satoshi'}), 400
 
         # FIX 1: Ensure amount is an integer for satoshis
         amount = int(amount)
@@ -504,7 +504,7 @@ def lnbits_webhook():
             
             supabase.table('campaigns').update({
                 'current_amount': new_amount,
-                'updated_at': datetime.now().isocformat()
+                'updated_at': datetime.now().isoformat()
             }).eq('id', campaign_id).execute()
 
             logger.info(f"✅ Campaign {campaign_id} updated: +{creator_amount} sats")

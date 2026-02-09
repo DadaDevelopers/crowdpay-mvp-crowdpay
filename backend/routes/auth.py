@@ -333,6 +333,98 @@ def reset_password():
         return jsonify({'error': 'Failed to reset password. Please try again.'}), 500
 
 
+@auth_bp.route('/profile', methods=['GET'])
+def get_profile():
+    """Get the authenticated user's full profile"""
+    try:
+        auth_header = request.headers.get('Authorization')
+
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization token'}), 401
+
+        token = auth_header.split(' ')[1]
+        user_resp = supabase.auth.get_user(token)
+
+        if not user_resp or not user_resp.user:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        user_data_resp = supabase.table("users").select("*").eq("id", user_resp.user.id).single().execute()
+        user_data = user_data_resp.data if user_data_resp.data else {
+            "id": user_resp.user.id,
+            "email": user_resp.user.email
+        }
+
+        return jsonify({'user': user_data}), 200
+
+    except Exception as e:
+        logger.error(f"Get profile error: {str(e)}")
+        return jsonify({'error': 'Failed to get profile'}), 500
+
+
+@auth_bp.route('/profile', methods=['PUT'])
+def update_profile():
+    """Update the authenticated user's profile"""
+    try:
+        auth_header = request.headers.get('Authorization')
+
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization token'}), 401
+
+        token = auth_header.split(' ')[1]
+        user_resp = supabase.auth.get_user(token)
+
+        if not user_resp or not user_resp.user:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Allowed fields to update
+        allowed_fields = [
+            'username', 'full_name', 'lightning_address',
+            'onchain_address', 'wallet_type', 'email_notifications'
+        ]
+        update_data = {k: v for k, v in data.items() if k in allowed_fields}
+
+        if not update_data:
+            return jsonify({'error': 'No valid fields to update'}), 400
+
+        # Validate lightning address format if provided
+        lightning_address = update_data.get('lightning_address')
+        if lightning_address and lightning_address.strip():
+            lightning_address = lightning_address.strip()
+            # Must be user@domain format or start with LNURL
+            if not (re.match(r'^[^@]+@[^@]+\.[^@]+$', lightning_address) or
+                    lightning_address.lower().startswith('lnurl')):
+                return jsonify({
+                    'error': 'Invalid Lightning address. Use user@domain format or LNURL.'
+                }), 400
+            update_data['lightning_address'] = lightning_address
+
+        # Validate wallet_type if provided
+        wallet_type = update_data.get('wallet_type')
+        if wallet_type and wallet_type not in ('internal', 'lightning', 'onchain'):
+            return jsonify({'error': 'Invalid wallet type'}), 400
+
+        # Update in database
+        result = supabase.table("users").update(update_data).eq(
+            "id", user_resp.user.id
+        ).execute()
+
+        if not result.data:
+            return jsonify({'error': 'Failed to update profile'}), 500
+
+        return jsonify({
+            'message': 'Profile updated successfully',
+            'user': result.data[0]
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Update profile error: {str(e)}")
+        return jsonify({'error': 'Failed to update profile'}), 500
+
+
 @auth_bp.route('/users', methods=['GET'])
 def get_all_users():
     """Get all users from the database (admin only - add auth check in production)"""

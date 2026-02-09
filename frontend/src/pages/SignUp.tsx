@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { Helmet } from "react-helmet-async";
 import { Zap, Wallet, Copy, Check, ArrowRight, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
-import logo from "@/assets/logo.png";
 import SubNav from "@/components/SubNav";
 import Footer from "@/components/Footer";
 
@@ -103,10 +103,10 @@ const SignUp = () => {
       // Save wallet data to context if addresses were provided (not skipped)
       if (!skipWallet && (lightningAddress || onchainAddress)) {
         setWallet({
-          ...wallet,
-          lightningAddress: lightningAddress || wallet.lightningAddress,
-          onchainAddress: onchainAddress || wallet.onchainAddress,
+          lightningAddress: lightningAddress || wallet?.lightningAddress || "",
+          onchainAddress: onchainAddress || wallet?.onchainAddress || "",
           walletType: "external",
+          btcBalance: wallet?.btcBalance || 0,
         });
       }
 

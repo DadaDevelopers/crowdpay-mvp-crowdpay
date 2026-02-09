@@ -73,6 +73,7 @@ class Campaign(BaseModel):
         return max(self.target_amount - self.current_amount, 0.0)
     
     class Config:
+        extra = "ignore"
         json_encoders = {
             datetime: lambda v: v.isoformat() if v else None
         }
