@@ -21,6 +21,7 @@ from flask import request, jsonify
 from datetime import datetime
 import logging
 import uuid
+from datetime import timedelta
 
 from services.auth import optional_auth, require_auth
 from . import contributions_bp
@@ -126,6 +127,9 @@ def create_contribution():
                 memo=memo,
                 expiry=3600  # 1 hour expiry
             )
+            #set auto-expiry for invoices
+            invoice_expires_at = datetime.now() + timedelta(seconds=3600)
+            data['invoice_expires_at'] = invoice_expires_at
 
             logger.info(f"LNbits invoice created: {payment_data['payment_hash']}")
 
