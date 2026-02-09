@@ -297,7 +297,7 @@ export const contributionApi = {
   },
 };
 
-// Invoice API (standalone invoices)
+// Invoice API (standalone invoices) - routes under /api/payments/
 export const invoiceApi = {
   /**
    * Create a standalone Lightning invoice
@@ -307,7 +307,7 @@ export const invoiceApi = {
     memo?: string;
     expiry?: number;
   }): Promise<InvoiceResponse> => {
-    return apiCall<InvoiceResponse>("/api/invoice/create", {
+    return apiCall<InvoiceResponse>("/api/payments/invoice/create", {
       method: "POST",
       body: JSON.stringify(params),
     });
@@ -323,7 +323,7 @@ export const invoiceApi = {
       status: string;
       amount: number;
       preimage?: string;
-    }>(`/api/invoice/status/${paymentHash}`);
+    }>(`/api/payments/invoice/status/${paymentHash}`);
   },
 
   /**
@@ -335,20 +335,20 @@ export const invoiceApi = {
       amount_sat: number;
       description: string;
       expiry: number;
-    }>("/api/invoice/decode", {
+    }>("/api/payments/invoice/decode", {
       method: "POST",
       body: JSON.stringify({ bolt11 }),
     });
   },
 };
 
-// Wallet API (requires auth)
+// Wallet API (requires auth) - routes under /api/payments/
 export const walletApi = {
   /**
    * Get wallet balance
    */
   getBalance: async (authToken: string): Promise<WalletBalance> => {
-    return apiCall<WalletBalance>("/api/wallet/balance", {
+    return apiCall<WalletBalance>("/api/payments/wallet/balance", {
       headers: { Authorization: `Bearer ${authToken}` },
     });
   },
@@ -358,9 +358,56 @@ export const walletApi = {
    */
   getPayments: async (authToken: string, limit: number = 20) => {
     return apiCall<{ payments: unknown[]; count: number }>(
-      `/api/wallet/payments?limit=${limit}`,
+      `/api/payments/wallet/payments?limit=${limit}`,
       {
         headers: { Authorization: `Bearer ${authToken}` },
+      }
+    );
+  },
+};
+
+// Profile API (requires auth)
+export const profileApi = {
+  /**
+   * Get user profile
+   */
+  get: async (authToken: string) => {
+    return apiCall<{
+      user: {
+        id: string;
+        email: string;
+        username?: string;
+        full_name?: string;
+        lightning_address?: string;
+        onchain_address?: string;
+        wallet_type?: string;
+        email_notifications?: boolean;
+      };
+    }>("/api/auth/profile", {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+  },
+
+  /**
+   * Update user profile
+   */
+  update: async (
+    authToken: string,
+    data: {
+      username?: string;
+      full_name?: string;
+      lightning_address?: string;
+      onchain_address?: string;
+      wallet_type?: string;
+      email_notifications?: boolean;
+    }
+  ) => {
+    return apiCall<{ message: string; user: Record<string, unknown> }>(
+      "/api/auth/profile",
+      {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify(data),
       }
     );
   },
@@ -389,7 +436,7 @@ export const healthApi = {
       lnbits_connected: boolean;
       wallet_id?: string;
       balance_sats?: number;
-    }>("/api/health");
+    }>("/api/payments/health");
   },
 };
 
@@ -398,5 +445,6 @@ export default {
   contribution: contributionApi,
   invoice: invoiceApi,
   wallet: walletApi,
+  profile: profileApi,
   health: healthApi,
 };

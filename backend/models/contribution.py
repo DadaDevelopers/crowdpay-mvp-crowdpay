@@ -55,6 +55,7 @@ class Contribution(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
+    invoice_expires_at: Optional[datetime] = None
 
     # Platform fee tracking (calculated, not stored)
     platform_fee: Optional[float] = None
@@ -83,8 +84,8 @@ class Contribution(BaseModel):
         """Validate amount is positive and meets minimum"""
         if v <= 0:
             raise ValueError("Amount must be greater than 0")
-        if v < 100:
-            raise ValueError("Minimum contribution is 100 satoshis")
+        if v < 1:
+            raise ValueError("Minimum contribution is 1 satoshi")
         return v
 
     # FIX 3: Added validator to coerce amount to int if float is provided
@@ -106,6 +107,8 @@ class Contribution(BaseModel):
             data['updated_at'] = self.updated_at.isoformat()
         if self.paid_at:
             data['paid_at'] = self.paid_at.isoformat()
+        if self.invoice_expires_at:
+            data['invoice_expires_at'] = self.invoice_expires_at.isoformat()
 
         # Remove calculated fields that shouldn't be stored
         data.pop('platform_fee', None)
@@ -130,6 +133,8 @@ class Contribution(BaseModel):
             data['updated_at'] = datetime.fromisoformat(data['updated_at'].replace('Z', '+00:00'))
         if 'paid_at' in data and data['paid_at'] and isinstance(data['paid_at'], str):
             data['paid_at'] = datetime.fromisoformat(data['paid_at'].replace('Z', '+00:00'))
+        if 'invoice_expires_at' in data and data['invoice_expires_at'] and isinstance(data['invoice_expires_at'], str):
+            data['invoice_expires_at'] = datetime.fromisoformat(data['invoice_expires_at'].replace('Z', '+00:00'))
 
         return cls(**data)
 
@@ -176,10 +181,11 @@ class Contribution(BaseModel):
     
     def get_reference(self) -> Optional[str]:
         """Get the internal reference for this contribution"""
-        return self.lnbits_reference
+        return self.lnbits_checking_id
 
     class Config:
         """Pydantic configuration"""
+        extra = "ignore"  # Ignore unknown fields from database (e.g. legacy bitnob_* columns)
         json_encoders = {
             datetime: lambda v: v.isoformat() if v else None
         }

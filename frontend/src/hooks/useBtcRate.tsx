@@ -82,4 +82,12 @@ export const satsToKes = (sats: number, rate: number): number => {
   return sats / rate;
 };
 
+// Format sats for display
+export const formatSats = (sats: number): string => {
+  return sats.toLocaleString();
+};
 
+// Format KES for display
+export const formatKes = (kes: number): string => {
+  return `KES ${Math.round(kes).toLocaleString()}`;
+};
