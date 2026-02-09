@@ -6,11 +6,13 @@ from models import Campaign
 from services import get_supabase_client
 from services.auth import optional_auth, require_auth
 from pydantic import ValidationError
+import uuid
+
 
 logger = logging.getLogger(__name__)
 supabase = get_supabase_client()
 
-
+#add/create a new campaign
 @campaigns_bp.route('', methods=['POST'])
 @require_auth
 def create_campaign():
@@ -55,44 +57,44 @@ def create_campaign():
         logger.error(f"Error creating campaign: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+# retreive/get all campaigns
 @campaigns_bp.route('', methods=['GET'])
 @optional_auth
 def get_campaigns():
     """Get all campaigns with optional filtering"""
     try:
-        # Get query parameters
         status = request.args.get('status')
         creator_id = request.args.get('creator_id')
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
-        
-        # Build query
+
         query = supabase.table('campaigns').select('*')
-        
+
+        # Only fetch active campaigns unless status filter is provided
         if status:
             query = query.eq('status', status)
-        
+        else:
+            query = query.eq('status', 'active')
+
         if creator_id:
             query = query.eq('creator_id', creator_id)
-        
-        # Execute query with pagination
-        response = query.order('created_at', desc=True).range(
-            offset, offset + limit - 1
-        ).execute()
-        
+
+        response = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         campaigns = [Campaign.from_dict(c).dict() for c in response.data]
-        
+
         return jsonify({
             'campaigns': campaigns,
             'count': len(campaigns),
             'offset': offset,
             'limit': limit
         }), 200
-        
+
     except Exception as e:
         logger.error(f"Error fetching campaigns: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
+# get campaign by it's id
 @campaigns_bp.route('/<campaign_id>', methods=['GET'])
 @optional_auth
 def get_campaign(campaign_id):
@@ -132,6 +134,8 @@ def get_campaign(campaign_id):
         logger.error(f"Error fetching campaign: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
+#Update campaign info
 @campaigns_bp.route('/<campaign_id>', methods=['PUT'])
 @require_auth
 def update_campaign(campaign_id):
@@ -190,33 +194,37 @@ def update_campaign(campaign_id):
         logger.error(f"Error updating campaign: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+#delete a campaign by id
 @campaigns_bp.route('/<campaign_id>', methods=['DELETE'])
 @require_auth
 def delete_campaign(campaign_id):
-    """Delete a campaign (soft delete by changing status)"""
+    """Permanently delete a campaign"""
     try:
         # Check if campaign exists
-        existing = supabase.table('campaigns').select('*').eq(
-            'id', campaign_id
-        ).single().execute()
-        
+        existing = supabase.table('campaigns').select('*').eq('id', campaign_id).single().execute()
         if not existing.data:
             return jsonify({'error': 'Campaign not found'}), 404
         
-        # Soft delete by updating status
-        supabase.table('campaigns').update({
-            'status': 'cancelled',
-            'updated_at': datetime.now().isoformat()
-        }).eq('id', campaign_id).execute()
-        
-        logger.info(f"Campaign deleted (cancelled): {campaign_id}")
-        
-        return jsonify({'message': 'Campaign cancelled successfully'}), 200
-        
-    except Exception as e:
-        logger.error(f"Error deleting campaign: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        # Verify ownership
+        if existing.data['creator_id'] != request.user['id']:
+            return jsonify({'error': 'Unauthorized'}), 403
 
+        # Permanently delete row
+        response = supabase.table('campaigns').delete().eq('id', campaign_id).execute()
+        
+        if not response.data:
+            return jsonify({'error': 'Failed to delete campaign'}), 500
+        
+        logger.info(f"Campaign permanently deleted: {campaign_id}")
+        return jsonify({'message': 'Campaign permanently deleted'}), 200
+
+    except Exception as e:
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+# get all contributions made to a campaign
 @campaigns_bp.route('/<campaign_id>/contributions', methods=['GET'])
 @optional_auth
 def get_campaign_contributions(campaign_id):
@@ -251,4 +259,3 @@ def get_campaign_contributions(campaign_id):
     except Exception as e:
         logger.error(f"Error fetching contributions: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-    

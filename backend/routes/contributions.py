@@ -1,24 +1,27 @@
 """
-Contribution Routes for CrowdPay
+Contribution Routes for CrowdPay - Lightning Network Payments via LNbits
 
-Handles Lightning-only payments via LNbits:
-- Create contribution with LNbits invoice
-- Check payment status
+This module handles all contribution-related operations:
+- Create contributions with LNbits Lightning invoices
+- Check payment status (polling)
 - Handle LNbits webhooks
 - Cancel pending contributions
+- List contributions
 
 Payment Flow:
-1. POST /api/contributions - Creates contribution + LNbits invoice
-2. Frontend displays QR code with BOLT11 invoice
-3. User pays with Lightning wallet
-4. GET /api/contributions/<id>/status - Frontend polls for payment status
-5. POST /api/webhooks/lnbits - LNbits notifies on payment (alternative to polling)
+1. POST /api/contributions - Creates contribution + generates LNbits BOLT11 invoice
+2. Frontend displays QR code with payment_request for user to scan
+3. User pays with any Lightning wallet
+4. GET /api/contributions/<id>/status - Frontend polls for payment confirmation
+5. POST /api/webhooks/lnbits - LNbits webhook notifies backend (alternative to polling)
+6. On payment: contribution marked as 'paid', campaign amount updated
 """
 
 from flask import request, jsonify
 from datetime import datetime
 import logging
 import uuid
+from datetime import timedelta
 
 from services.auth import optional_auth, require_auth
 from . import contributions_bp
@@ -35,7 +38,7 @@ polling_service = InvoicePollingService()
 
 
 def btc_to_sats(btc: float) -> int:
-    """Convert BTC to satoshis"""
+    """Convert BTC to satoshis (1 BTC = 100,000,000 sats)"""
     return int(btc * 100_000_000)
 
 
@@ -43,7 +46,7 @@ def btc_to_sats(btc: float) -> int:
 @optional_auth
 def create_contribution():
     """
-    Create a new contribution and generate Lightning invoice
+    Create a new contribution and generate Lightning Network invoice
 
     Request Body:
     {
@@ -56,12 +59,12 @@ def create_contribution():
         "is_anonymous": false
     }
 
-    Response:
+    Response (201 Created):
     {
         "message": "Contribution created successfully",
         "contribution": {...},
-        "payment_request": "lnbc...",  // BOLT11 invoice for QR code
-        "payment_hash": "abc123..."    // For status checking
+        "payment_request": "lnbc...",  // BOLT11 invoice to scan/pay
+        "payment_hash": "abc123..."    // For checking payment status
     }
     """
     try:
@@ -72,6 +75,9 @@ def create_contribution():
 
         # Validate campaign exists and is active
         campaign_id = data.get('campaign_id')
+        if not campaign_id:
+            return jsonify({'error': 'campaign_id is required'}), 400
+
         campaign_response = supabase.table('campaigns').select('*').eq(
             'id', campaign_id
         ).single().execute()
@@ -96,62 +102,71 @@ def create_contribution():
         if amount < 100:
             return jsonify({'error': 'Minimum contribution is 100 satoshis'}), 400
 
+        # FIX 1: Ensure amount is an integer for satoshis
+        amount = int(amount)
         data['amount'] = amount
         data['currency'] = currency
 
-        # Create contribution model
-        contribution = Contribution(**data)
-        contribution.created_at = datetime.now()
-        contribution.payment_status = 'pending'
+        # Handle anonymous contributions before creating model
+        if data.get('is_anonymous', False):
+            data['contributor_name'] = None
+            data['contributor_email'] = None
 
-        # Create LNbits Lightning invoice
+        # Create Lightning invoice via LNbits API FIRST (before database)
         try:
-            # Generate memo for the invoice
-            memo = f"CrowdPay: {campaign.get('title')[:50]}"
-            if contribution.contributor_name and not contribution.is_anonymous:
-                memo += f" from {contribution.contributor_name}"
+            # Generate memo/description for the invoice
+            memo = f"CrowdPay: {campaign.get('title', 'Campaign')[:50]}"
+            if data.get('contributor_name') and not data.get('is_anonymous', False):
+                memo += f" from {data['contributor_name']}"
 
-            # Create invoice via LNbits API
+            logger.info(f"Creating LNbits invoice for {amount} sats")
+
+            # Call LNbits API to create invoice
             payment_data = lnbits_service.create_invoice(
-                amount=int(amount),
+                amount=amount,
                 memo=memo,
                 expiry=3600  # 1 hour expiry
             )
+            #set auto-expiry for invoices
+            invoice_expires_at = datetime.now() + timedelta(seconds=3600)
+            data['invoice_expires_at'] = invoice_expires_at
 
-            # Store payment data in contribution
-            contribution.lnbits_payment_hash = payment_data['payment_hash']
-            contribution.lnbits_payment_request = payment_data['payment_request']
-            contribution.lnbits_checking_id = payment_data['checking_id']
+            logger.info(f"LNbits invoice created: {payment_data['payment_hash']}")
 
-            # Also store in legacy fields for DB compatibility
-            contribution.bitnob_payment_hash = payment_data['payment_hash']
-            contribution.bitnob_payment_request = payment_data['payment_request']
-            contribution.bitnob_payment_id = payment_data['checking_id']
-            contribution.bitnob_reference = f"contrib_{uuid.uuid4().hex[:12]}"
+            # FIX 2: Add LNbits data to the request data BEFORE creating model
+            data['lnbits_payment_hash'] = payment_data['payment_hash']
+            data['lnbits_payment_request'] = payment_data['payment_request']
+            data['lnbits_checking_id'] = payment_data.get('checking_id')
+            # data['lnbits_reference'] = f"contrib_{uuid.uuid4().hex[:12]}"
+            data['payment_status'] = 'pending'
+            
+            # FIX 3: Set timestamps
+            now = datetime.now()
+            data['created_at'] = now
+            data['updated_at'] = now
 
-            # Handle anonymous contributions
-            if contribution.is_anonymous:
-                contribution.contributor_name = None
-                contribution.contributor_email = None
+            # Create contribution model with all data
+            contribution = Contribution(**data)
 
             # Insert contribution into database
             contrib_data = contribution.to_dict()
-            contrib_data.pop('id', None)
+            contrib_data.pop('id', None)  # Let database generate ID
 
             response = supabase.table('contributions').insert(contrib_data).execute()
+            
             if not response.data:
                 return jsonify({'error': 'Failed to create contribution'}), 500
 
             created_contribution = Contribution.from_dict(response.data[0])
 
-            # Start polling for payment confirmation
+            # Start polling service to check for payment
             polling_service.start_polling(
                 contribution_id=created_contribution.id,
                 payment_hash=payment_data['payment_hash'],
                 campaign_id=campaign_id
             )
 
-            logger.info(f"Contribution created: {created_contribution.id} with payment_hash: {payment_data['payment_hash']}")
+            logger.info(f"✅ Contribution created: {created_contribution.id}")
 
             return jsonify({
                 'message': 'Contribution created successfully',
@@ -161,13 +176,22 @@ def create_contribution():
             }), 201
 
         except LNbitsAPIError as e:
-            logger.error(f"Error creating LNbits invoice: {str(e)}")
-            return jsonify({'error': 'Payment processing error', 'details': str(e)}), 400
+            logger.error(f"❌ LNbits API error: {str(e)}")
+            return jsonify({
+                'error': 'Payment processing error',
+                'details': str(e)
+            }), 400
 
     except ValidationError as e:
-        return jsonify({'error': 'Validation error', 'details': e.errors()}), 400
+        logger.error(f"Validation error: {e.errors()}")
+        return jsonify({
+            'error': 'Validation error',
+            'details': e.errors()
+        }), 400
     except Exception as e:
-        logger.error(f"Error creating contribution: {str(e)}")
+        logger.error(f"❌ Error creating contribution: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -204,15 +228,15 @@ def check_contribution_status(contribution_id):
     """
     Check the payment status of a contribution
 
-    This endpoint is used by the frontend to poll for payment confirmation.
-    It checks LNbits directly for the latest status.
+    Frontend should poll this endpoint every few seconds to check if payment completed.
+    This checks LNbits API directly for the latest payment status.
 
     Response:
     {
         "contribution_id": "uuid",
         "payment_status": "pending|paid|failed|expired",
         "is_paid": true/false,
-        "paid_at": "2024-01-01T00:00:00Z"
+        "paid_at": "2024-01-01T00:00:00Z" or null
     }
     """
     try:
@@ -228,12 +252,20 @@ def check_contribution_status(contribution_id):
         # If pending and has payment hash, check with LNbits
         if contribution.is_pending() and contribution.get_payment_hash():
             try:
+                # Check payment status with LNbits API
                 payment_status = lnbits_service.check_invoice_status(
                     contribution.get_payment_hash()
                 )
 
                 # Update if payment confirmed
-                if payment_status['paid'] and not contribution.is_paid():
+                if payment_status.get('paid') and not contribution.is_paid():
+                    logger.info(f"⚡ Payment confirmed for contribution: {contribution_id}")
+
+                    # FIX 4: Calculate platform fee correctly
+                    amount = float(contribution.amount)
+                    platform_fee = amount * (Config.PLATFORM_FEE_PERCENT / 100)
+                    creator_amount = amount - platform_fee
+
                     update_data = {
                         'payment_status': 'paid',
                         'paid_at': datetime.now().isoformat(),
@@ -245,30 +277,29 @@ def check_contribution_status(contribution_id):
                         'id', contribution_id
                     ).execute()
 
-                    # Update campaign amount
+                    # Update campaign current_amount
                     campaign_id = contribution.campaign_id
-                    amount = contribution.amount
-                    platform_fee = amount * (Config.PLATFORM_FEE_PERCENT / 100)
-                    creator_amount = amount - platform_fee
-
                     campaign_response = supabase.table('campaigns').select(
                         'current_amount'
                     ).eq('id', campaign_id).single().execute()
 
                     if campaign_response.data:
-                        new_amount = campaign_response.data['current_amount'] + creator_amount
+                        current = float(campaign_response.data.get('current_amount', 0))
+                        new_amount = current + creator_amount
+                        
                         supabase.table('campaigns').update({
                             'current_amount': new_amount,
                             'updated_at': datetime.now().isoformat()
                         }).eq('id', campaign_id).execute()
 
+                        logger.info(f"Campaign {campaign_id} updated with {creator_amount} sats")
+
                     # Stop polling
                     polling_service.stop_polling(contribution_id)
 
+                    # Update local object
                     contribution.payment_status = 'paid'
                     contribution.paid_at = datetime.now()
-
-                    logger.info(f"Payment confirmed via status check: {contribution_id}")
 
             except LNbitsAPIError as e:
                 logger.error(f"Error checking LNbits status: {str(e)}")
@@ -305,14 +336,15 @@ def cancel_contribution(contribution_id):
                 'error': 'Can only cancel pending contributions'
             }), 400
 
-        # Lightning invoices expire automatically, just stop polling
+        # Lightning invoices expire automatically after expiry time
+        # We just stop polling and mark as cancelled
         if contribution.get_payment_hash():
-            logger.info(f"Invoice will expire automatically: {contribution.get_payment_hash()}")
+            logger.info(f"Lightning invoice will expire: {contribution.get_payment_hash()}")
 
         # Stop polling
         polling_service.stop_polling(contribution_id)
 
-        # Update contribution status
+        # Update contribution status to cancelled
         supabase.table('contributions').update({
             'payment_status': 'cancelled',
             'updated_at': datetime.now().isoformat()
@@ -330,7 +362,15 @@ def cancel_contribution(contribution_id):
 @contributions_bp.route('', methods=['GET'])
 @optional_auth
 def get_contributions():
-    """Get all contributions with optional filtering"""
+    """
+    Get all contributions with optional filtering
+
+    Query parameters:
+    - campaign_id: Filter by campaign
+    - payment_status: Filter by status (pending, paid, etc.)
+    - limit: Max results (default 50)
+    - offset: Pagination offset (default 0)
+    """
     try:
         # Get query parameters
         campaign_id = request.args.get('campaign_id')
@@ -377,8 +417,8 @@ def lnbits_webhook():
     """
     Webhook endpoint for LNbits payment notifications
 
-    LNbits sends a POST request when a payment is received.
-    The webhook URL is set when creating the invoice.
+    LNbits will POST to this endpoint when a payment is received.
+    This is an alternative to polling - more efficient for production.
 
     Expected payload from LNbits:
     {
@@ -386,7 +426,8 @@ def lnbits_webhook():
         "payment_request": "lnbc...",
         "amount": 1000,
         "memo": "...",
-        "paid": true
+        "paid": true,
+        "preimage": "xyz..."
     }
     """
     try:
@@ -394,10 +435,10 @@ def lnbits_webhook():
         payload = request.get_data(as_text=True)
         signature = request.headers.get('X-LNbits-Signature', '')
 
-        # Verify webhook signature (optional but recommended)
+        # Verify webhook signature if present (recommended for security)
         if signature and not lnbits_service.verify_webhook_signature(payload, signature):
-            logger.warning("Invalid webhook signature")
-            # Continue anyway as signature verification is optional for LNbits
+            logger.warning("⚠️ Invalid webhook signature")
+            # Continue anyway as signature verification is optional
 
         data = request.get_json()
 
@@ -412,27 +453,35 @@ def lnbits_webhook():
 
         # Only process if payment is confirmed
         if not is_paid:
+            logger.info(f"Webhook received for unpaid invoice: {payment_hash}")
             return jsonify({'message': 'Payment not yet confirmed'}), 200
+
+        logger.info(f"⚡ Webhook: Payment received for {payment_hash}")
 
         # Find contribution by payment hash
         response = supabase.table('contributions').select('*').eq(
-            'bitnob_payment_hash', payment_hash
+            'lnbits_payment_hash', payment_hash
         ).execute()
 
         if not response.data:
-            logger.warning(f"No contribution found for payment_hash: {payment_hash}")
+            logger.warning(f"⚠️ No contribution found for payment_hash: {payment_hash}")
             return jsonify({'message': 'Contribution not found'}), 404
 
         contribution_data = response.data[0]
         contribution_id = contribution_data['id']
         campaign_id = contribution_data['campaign_id']
 
-        # Check if already paid
+        # Check if already processed
         if contribution_data['payment_status'] == 'paid':
             logger.info(f"Contribution {contribution_id} already marked as paid")
             return jsonify({'message': 'Already processed'}), 200
 
-        # Update contribution status
+        # FIX 5: Calculate platform fee correctly from amount
+        amount = float(contribution_data['amount'])
+        platform_fee = amount * (Config.PLATFORM_FEE_PERCENT / 100)
+        creator_amount = amount - platform_fee
+
+        # Update contribution status to paid
         update_data = {
             'payment_status': 'paid',
             'paid_at': datetime.now().isoformat(),
@@ -444,29 +493,31 @@ def lnbits_webhook():
             'id', contribution_id
         ).execute()
 
-        # Update campaign amount with fee deduction
-        amount = contribution_data['amount']
-        platform_fee = amount * (Config.PLATFORM_FEE_PERCENT / 100)
-        creator_amount = amount - platform_fee
-
+        # Update campaign amount with platform fee deduction
         campaign_response = supabase.table('campaigns').select(
             'current_amount'
         ).eq('id', campaign_id).single().execute()
 
         if campaign_response.data:
-            new_amount = campaign_response.data['current_amount'] + creator_amount
+            current = float(campaign_response.data.get('current_amount', 0))
+            new_amount = current + creator_amount
+            
             supabase.table('campaigns').update({
                 'current_amount': new_amount,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': datetime.now().isocformat()
             }).eq('id', campaign_id).execute()
 
-        # Stop polling
+            logger.info(f"✅ Campaign {campaign_id} updated: +{creator_amount} sats")
+
+        # Stop polling service
         polling_service.stop_polling(contribution_id)
 
-        logger.info(f"Webhook: Payment confirmed for {contribution_id}")
+        logger.info(f"✅ Webhook processed: Contribution {contribution_id} marked as paid")
 
         return jsonify({'message': 'Webhook processed successfully'}), 200
 
     except Exception as e:
-        logger.error(f"Error processing webhook: {str(e)}")
+        logger.error(f"❌ Error processing webhook: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'error': 'Internal server error'}), 500

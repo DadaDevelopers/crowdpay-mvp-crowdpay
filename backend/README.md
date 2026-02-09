@@ -79,32 +79,11 @@ backend/
 4. **Configure environment variables**
 
    Copy `.env.example` to `.env` and fill in the values:
-   ```env
-   # Flask Configuration
-   SECRET_KEY=your-secret-key-here
-   FLASK_DEBUG=True
 
-   # Supabase Configuration
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_KEY=your-supabase-anon-key
-
-   # LNbits Configuration
-   LNBITS_URL=https://demo.lnbits.com
-   LNBITS_WALLET_ID=your-wallet-id
-   LNBITS_ADMIN_KEY=your-admin-key
-   LNBITS_INVOICE_KEY=your-invoice-key
-   LNBITS_WEBHOOK_URL=https://your-backend.com/api/webhooks/lnbits
-
-   # Platform Fee (percentage)
-   PLATFORM_FEE_PERCENT=2.5
-
-   # Polling Configuration
-   POLLING_INTERVAL=30
-   POLLING_TIMEOUT=3600
-
-   # CORS
-   CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+   ```bash
+   cp .env.example .env
    ```
+
 
 5. **Set up database**
 
