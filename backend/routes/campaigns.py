@@ -198,25 +198,57 @@ def update_campaign(campaign_id):
 @campaigns_bp.route('/<campaign_id>', methods=['DELETE'])
 @require_auth
 def delete_campaign(campaign_id):
-    """Permanently delete a campaign"""
+    """Delete a campaign. Checks for contributions and requires confirmation if any exist."""
     try:
         # Check if campaign exists
         existing = supabase.table('campaigns').select('*').eq('id', campaign_id).single().execute()
         if not existing.data:
             return jsonify({'error': 'Campaign not found'}), 404
-        
+
         # Verify ownership
         if existing.data['creator_id'] != request.user['id']:
             return jsonify({'error': 'Unauthorized'}), 403
 
-        # Permanently delete row
+        # Check for contributions
+        contrib_response = supabase.table('contributions').select(
+            'id, amount, payment_status'
+        ).eq('campaign_id', campaign_id).execute()
+
+        contributions = contrib_response.data or []
+        paid_contributions = [c for c in contributions if c.get('payment_status') == 'paid']
+        pending_contributions = [c for c in contributions if c.get('payment_status') == 'pending']
+
+        # Block deletion if there are active/pending contributions
+        if pending_contributions:
+            return jsonify({
+                'error': 'Cannot delete campaign with pending contributions',
+                'has_pending': True,
+                'pending_count': len(pending_contributions),
+            }), 409
+
+        # If paid contributions exist, require confirmation
+        confirm = request.args.get('confirm', 'false').lower() == 'true'
+        if paid_contributions and not confirm:
+            total_sats = sum(c.get('amount', 0) for c in paid_contributions)
+            return jsonify({
+                'error': 'Campaign has contributions',
+                'requires_confirmation': True,
+                'contribution_count': len(paid_contributions),
+                'total_amount': total_sats,
+            }), 409
+
+        # Delete related contributions first
+        if contributions:
+            supabase.table('contributions').delete().eq('campaign_id', campaign_id).execute()
+
+        # Delete the campaign
         response = supabase.table('campaigns').delete().eq('id', campaign_id).execute()
-        
+
         if not response.data:
             return jsonify({'error': 'Failed to delete campaign'}), 500
-        
+
         logger.info(f"Campaign permanently deleted: {campaign_id}")
-        return jsonify({'message': 'Campaign permanently deleted'}), 200
+        return jsonify({'message': 'Campaign deleted successfully'}), 200
 
     except Exception as e:
         import traceback

@@ -19,6 +19,7 @@ interface CampaignsContextType {
 
   // Actions
   createCampaign: (data: CreateCampaignRequest) => Promise<Campaign>;
+  deleteCampaign: (campaignId: string, confirm?: boolean) => Promise<{ message: string }>;
   getCampaignById: (id: string) => Promise<{ campaign: Campaign; statistics?: CampaignStatistics }>;
   getUserCampaigns: () => Campaign[];
   getPublicCampaigns: () => Campaign[];
@@ -26,6 +27,7 @@ interface CampaignsContextType {
 
   // Mutation states
   isCreating: boolean;
+  isDeleting: boolean;
 }
 
 const CampaignsContext = createContext<CampaignsContextType | undefined>(undefined);
@@ -62,7 +64,19 @@ export const CampaignsProvider = ({ children }: { children: ReactNode }) => {
       return response.campaign;
     },
     onSuccess: () => {
-      // Invalidate and refetch campaigns list
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+  });
+
+  // Delete campaign mutation
+  const deleteMutation = useMutation({
+    mutationFn: async ({ campaignId, confirm }: { campaignId: string; confirm?: boolean }) => {
+      if (!session?.access_token) {
+        throw new Error("Authentication required");
+      }
+      return campaignApi.delete(campaignId, session.access_token, confirm);
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
   });
@@ -106,6 +120,14 @@ export const CampaignsProvider = ({ children }: { children: ReactNode }) => {
     [createMutation]
   );
 
+  // Delete campaign wrapper
+  const deleteCampaign = useCallback(
+    async (campaignId: string, confirm?: boolean) => {
+      return deleteMutation.mutateAsync({ campaignId, confirm });
+    },
+    [deleteMutation]
+  );
+
   return (
     <CampaignsContext.Provider
       value={{
@@ -113,11 +135,13 @@ export const CampaignsProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         error: error as Error | null,
         createCampaign,
+        deleteCampaign,
         getCampaignById,
         getUserCampaigns,
         getPublicCampaigns,
         refetchCampaigns,
         isCreating: createMutation.isPending,
+        isDeleting: deleteMutation.isPending,
       }}
     >
       {children}
