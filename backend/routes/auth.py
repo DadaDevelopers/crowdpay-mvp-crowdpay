@@ -63,7 +63,7 @@ def session_to_dict(session):
     if session is None:
         return None
     return {
-        "access_token": getattr(session, "access_token", None),
+        "access_token": getattr(session, "access_token", None), 
         "refresh_token": getattr(session, "refresh_token", None),
         "expires_at": getattr(session, "expires_at", None),
         "token_type": getattr(session, "token_type", None)
@@ -126,7 +126,7 @@ def signup():
                 "data": {
                     "username": signup_data.username
                 },
-                "email_redirect_to": "http://localhost:8080/email-confirmed"
+                "email_redirect_to": "http://localhost:8080/signin"
             }
         })
 
