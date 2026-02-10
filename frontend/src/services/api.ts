@@ -130,7 +130,7 @@ async function apiCall<T>(
     throw new APIError(
       data.error || "API request failed",
       response.status,
-      data.details
+      data
     );
   }
 
@@ -200,13 +200,16 @@ export const campaignApi = {
   },
 
   /**
-   * Delete (cancel) a campaign (requires auth, owner only)
+   * Delete a campaign (requires auth, owner only).
+   * Pass confirm=true to force-delete a campaign that has paid contributions.
    */
   delete: async (
     campaignId: string,
-    authToken: string
+    authToken: string,
+    confirm?: boolean
   ): Promise<{ message: string }> => {
-    return apiCall<{ message: string }>(`/api/campaigns/${campaignId}`, {
+    const query = confirm ? "?confirm=true" : "";
+    return apiCall<{ message: string }>(`/api/campaigns/${campaignId}${query}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${authToken}` },
     });

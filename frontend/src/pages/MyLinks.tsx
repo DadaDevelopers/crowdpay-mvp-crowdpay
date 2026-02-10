@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
-import { useCampaigns } from "@/contexts/CampaignsContext";
+import { useCampaigns, Campaign } from "@/contexts/CampaignsContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -14,15 +15,31 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { APIError } from "@/services/api";
 
 const MyLinks = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   useAuth(); // Ensure user is authenticated
-  const { getUserCampaigns, isLoading } = useCampaigns();
+  const { getUserCampaigns, deleteCampaign, isLoading, isDeleting } = useCampaigns();
 
-  // Get user's campaigns from context (which fetches from backend)
   const campaigns = getUserCampaigns();
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
+  const [contributionWarning, setContributionWarning] = useState<{
+    count: number;
+    totalAmount: number;
+  } | null>(null);
 
   const copyLink = (campaignId: string, title: string) => {
     const link = `${window.location.origin}/c/${campaignId}`;
@@ -31,6 +48,61 @@ const MyLinks = () => {
       title: "Link copied!",
       description: `Share link for "${title}" with your supporters`,
     });
+  };
+
+  const handleDeleteClick = (campaign: Campaign) => {
+    setContributionWarning(null);
+    setDeleteTarget(campaign);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      const confirm = contributionWarning !== null;
+      await deleteCampaign(deleteTarget.id, confirm);
+      toast({
+        title: "Campaign deleted successfully",
+        description: `"${deleteTarget.title}" has been permanently deleted.`,
+      });
+      setDeleteTarget(null);
+      setContributionWarning(null);
+    } catch (err) {
+      if (err instanceof APIError && err.status === 409) {
+        const details = err.details as Record<string, unknown> | undefined;
+
+        if (details?.has_pending) {
+          toast({
+            title: "Cannot delete campaign",
+            description: `This campaign has ${details.pending_count} pending contribution(s). Wait for them to complete or expire before deleting.`,
+            variant: "destructive",
+          });
+          setDeleteTarget(null);
+          return;
+        }
+
+        if (details?.requires_confirmation) {
+          setContributionWarning({
+            count: details.contribution_count as number,
+            totalAmount: details.total_amount as number,
+          });
+          return;
+        }
+      }
+
+      toast({
+        title: "Failed to delete campaign",
+        description: err instanceof Error ? err.message : "An unexpected error occurred",
+        variant: "destructive",
+      });
+      setDeleteTarget(null);
+      setContributionWarning(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteTarget(null);
+    setContributionWarning(null);
   };
 
   const getStatusBadge = (status: string) => {
@@ -162,9 +234,12 @@ const MyLinks = () => {
                             <ExternalLink className="mr-2 h-4 w-4" />
                             Open in New Tab
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteClick(campaign)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Cancel Campaign
+                            Delete Campaign
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -176,6 +251,55 @@ const MyLinks = () => {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) handleDeleteCancel(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {contributionWarning ? "Campaign has contributions" : "Delete campaign?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              {contributionWarning ? (
+                <>
+                  <p>
+                    <strong>"{deleteTarget?.title}"</strong> has{" "}
+                    <strong>{contributionWarning.count} contribution{contributionWarning.count !== 1 ? "s" : ""}</strong>{" "}
+                    totaling <strong>{contributionWarning.totalAmount.toLocaleString()} sats</strong>.
+                  </p>
+                  <p>Are you sure you want to delete this campaign and all its contributions? This cannot be undone.</p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Are you sure you want to delete <strong>"{deleteTarget?.title}"</strong>?
+                  </p>
+                  <p>This action cannot be undone.</p>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <Button
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              variant="destructive"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : contributionWarning ? (
+                "Delete Anyway"
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
