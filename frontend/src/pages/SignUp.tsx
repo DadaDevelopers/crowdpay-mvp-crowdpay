@@ -97,6 +97,39 @@ const SignUp = () => {
     setStep(2);
   };
 
+  // const handleSignUp = async (skipWallet: boolean) => {
+  //   setSubmitting(true);
+  //   try {
+  //     // Save wallet data to context if addresses were provided (not skipped)
+  //     if (!skipWallet && (lightningAddress || onchainAddress)) {
+  //       setWallet({
+  //         lightningAddress: lightningAddress || wallet?.lightningAddress || "",
+  //         onchainAddress: onchainAddress || wallet?.onchainAddress || "",
+  //         walletType: "external",
+  //         btcBalance: wallet?.btcBalance || 0,
+  //       });
+  //     }
+
+  //     await signUp(email, password, username || email.split("@")[0]);
+
+  //     toast({
+  //       title: "Account Created!",
+  //       description: "Welcome to CrowdPay.",
+  //     });
+
+  //     navigate("/app");
+  //   } catch (error) {
+  //     const message = error instanceof Error ? error.message : "Sign up failed. Please try again.";
+  //     toast({
+  //       title: "Sign Up Failed",
+  //       description: message,
+  //       variant: "destructive",
+  //     });
+  //   } finally {
+  //     setSubmitting(false);
+  //   }
+  // };
+
   const handleSignUp = async (skipWallet: boolean) => {
     setSubmitting(true);
     try {
@@ -110,11 +143,12 @@ const SignUp = () => {
         });
       }
 
-      await signUp(email, password, username || email.split("@")[0]);
+      const response = await signUp(email, password, username || email.split("@")[0]);
 
       toast({
         title: "Account Created!",
-        description: "Welcome to CrowdPay.",
+        description: "Please check your email to verify your account. You can still use CrowdPay while unverified.",
+        duration: 6000, // Show longer
       });
 
       navigate("/app");
@@ -129,7 +163,6 @@ const SignUp = () => {
       setSubmitting(false);
     }
   };
-
   const handleBack = () => {
     setStep(1);
   };

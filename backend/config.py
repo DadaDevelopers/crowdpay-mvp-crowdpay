@@ -22,6 +22,9 @@ class Config:
     LNBITS_ADMIN_KEY = os.getenv('LNBITS_ADMIN_KEY')  # Full access - keep secure!
     LNBITS_INVOICE_KEY = os.getenv('LNBITS_INVOICE_KEY')  # Read-only, safe for invoices
     LNBITS_WEBHOOK_URL = os.getenv('LNBITS_WEBHOOK_URL', '')  # Optional webhook for payment notifications
+    
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080')
+
 
     # Polling Configuration
     POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '30'))  # seconds
@@ -31,7 +34,10 @@ class Config:
     PLATFORM_FEE_PERCENT = float(os.getenv('PLATFORM_FEE_PERCENT', '2.5'))
 
     # CORS
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
+    CORS_ORIGINS = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080"
+    ]
 
     @classmethod
     def validate(cls):
