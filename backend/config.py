@@ -25,33 +25,35 @@ class Config:
     
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080')
 
-
     # Polling Configuration
     POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '30'))  # seconds
     POLLING_TIMEOUT = int(os.getenv('POLLING_TIMEOUT', '3600'))  # 1 hour
 
     # Platform Fee Configuration (percentage)
     PLATFORM_FEE_PERCENT = float(os.getenv('PLATFORM_FEE_PERCENT', '2.5'))
-
+    
     # CORS
     CORS_ORIGINS = [
-    "http://localhost:8080",
-    "http://127.0.0.1:8080"
+        origin.strip()
+        for origin in os.getenv("CORS_ORIGINS", "").split(",")
+        if origin.strip()
     ]
 
     @classmethod
     def validate(cls):
-        """Validate required configuration"""
         required = [
-            'SUPABASE_URL',
-            'SUPABASE_KEY',
-            'LNBITS_URL',
-            'LNBITS_INVOICE_KEY'
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+            "LNBITS_URL",
+            "LNBITS_INVOICE_KEY",
         ]
 
         missing = [key for key in required if not getattr(cls, key)]
 
         if missing:
             raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+
+        if not cls.CORS_ORIGINS:
+            raise ValueError("CORS_ORIGINS is empty or misconfigured")
 
         return True
