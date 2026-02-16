@@ -23,7 +23,7 @@ import Wallet from "./pages/Wallet";
 import Notifications from "./pages/Notifications";
 import Support from "./pages/Support";
 import NotFound from "./pages/NotFound";
-import AuthCallback from "@/pages/AuthCallback";
+// import AuthCallback from "@/pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
@@ -44,7 +44,7 @@ const App = () => (
                   <Route path="/forgot-password" element={<ForgotPassword />} />
                   
                   {/* Auth callback MUST come before protected routes */}
-                  <Route path="/auth/callback" element={<AuthCallback />} />
+                  {/* <Route path="/auth/callback" element={<AuthCallback />} /> */}
                   
                   {/* Protected routes */}
                   <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />

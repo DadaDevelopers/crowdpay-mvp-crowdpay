@@ -13,7 +13,6 @@ interface User {
   id: string;
   email: string;
   username?: string;
-  email_verified?: boolean;
 }
 
 interface Session {
@@ -30,8 +29,6 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username: string) => Promise<void>;
   signOut: () => Promise<void>;
-  confirmEmail: (tokenHash: string) => Promise<void>;
-  resendVerificationEmail: (email: string) => Promise<void>;
 }
 
 const defaultWallet: WalletData = {
@@ -165,43 +162,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Allow the user to sign in before confirming their email, but mark them as unconfirmed
-  const confirmEmail = async (tokenHash: string) => {
-    const response = await fetch(`${API_URL}/api/auth/confirm-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token_hash: tokenHash }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Email confirmation failed");
-    }
-
-    // Update user's email_verified status if logged in
-    if (user) {
-      const updatedUser = { ...user, email_verified: true };
-      setUser(updatedUser);
-      localStorage.setItem("crowdpay_user", JSON.stringify(updatedUser));
-    }
-  };
-
-  //  REsend verification email
-  const resendVerificationEmail = async (email: string) => {
-    const response = await fetch(`${API_URL}/api/auth/resend-verification`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || "Failed to resend verification email");
-    }
-  };
-
-
   const signOut = async () => {
     try {
       if (session?.access_token) {
@@ -237,8 +197,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         signIn,
         signUp,
         signOut,
-        confirmEmail,
-        resendVerificationEmail,
       }}
     >
       {children}
