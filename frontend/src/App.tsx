@@ -23,6 +23,7 @@ import Wallet from "./pages/Wallet";
 import Notifications from "./pages/Notifications";
 import Support from "./pages/Support";
 import NotFound from "./pages/NotFound";
+// import AuthCallback from "@/pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
@@ -36,23 +37,30 @@ const App = () => (
           <BrowserRouter>
             <MockAuthProvider>
               <CampaignsProvider>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/signin" element={<SignIn />} />
-                <Route path="/signup" element={<SignUp />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />
-                <Route path="/explore" element={<ExploreCampaigns />} />
-                <Route path="/create" element={<AppLayout><CreateCampaign /></AppLayout>} />
-                <Route path="/my-links" element={<AppLayout><MyLinks /></AppLayout>} />
-                <Route path="/contributions" element={<AppLayout><Contributions /></AppLayout>} />
-                <Route path="/wallet" element={<AppLayout><Wallet /></AppLayout>} />
-                <Route path="/notifications" element={<AppLayout><Notifications /></AppLayout>} />
-                <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
-                <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
-                <Route path="/c/:id" element={<Campaign />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+                <Routes>
+                  <Route path="/" element={<Landing />} />
+                  <Route path="/signin" element={<SignIn />} />
+                  <Route path="/signup" element={<SignUp />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  
+                  {/* Auth callback MUST come before protected routes */}
+                  {/* <Route path="/auth/callback" element={<AuthCallback />} /> */}
+                  
+                  {/* Protected routes */}
+                  <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />
+                  <Route path="/explore" element={<ExploreCampaigns />} />
+                  <Route path="/create" element={<AppLayout><CreateCampaign /></AppLayout>} />
+                  <Route path="/my-links" element={<AppLayout><MyLinks /></AppLayout>} />
+                  <Route path="/contributions" element={<AppLayout><Contributions /></AppLayout>} />
+                  <Route path="/wallet" element={<AppLayout><Wallet /></AppLayout>} />
+                  <Route path="/notifications" element={<AppLayout><Notifications /></AppLayout>} />
+                  <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
+                  <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
+                  <Route path="/c/:id" element={<Campaign />} />
+                  
+                  {/* 404 must be last */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
               </CampaignsProvider>
             </MockAuthProvider>
           </BrowserRouter>

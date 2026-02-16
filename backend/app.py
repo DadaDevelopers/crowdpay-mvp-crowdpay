@@ -25,8 +25,15 @@ def create_app():
         logger.error(f"Configuration error: {str(e)}")
         raise
 
-    # Enable CORS
-    CORS(app, origins=Config.CORS_ORIGINS)
+    # Enable CORS with proper configuration
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": Config.CORS_ORIGINS,
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
+        }
+    })
 
     # Register blueprints
     app.register_blueprint(campaigns_bp, url_prefix='/api/campaigns')
