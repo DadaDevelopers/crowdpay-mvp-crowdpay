@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Check, Loader2, Zap, ArrowLeftRight } from "lucide-react";
+import { Copy, Check, Loader2, Zap, ArrowLeftRight, Bitcoin } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog,
@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useBtcRate, kesToSats, satsToKes } from "@/hooks/useBtcRate";
 import mpesaLogo from "@/assets/mpesa-logo.png";
-import bitcoinLogo from "@/assets/bitcoin-logo.png";
+import crowdpayLogo from "@/assets/logo.png";
 
 // API configuration
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -251,8 +251,8 @@ export const PaymentModal = ({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-bitcoin" />
-            Choose Payment Method
+            <img src={crowdpayLogo} alt="CrowdPay" className="w-7 h-7 object-contain" />
+            <span>Contribute to <span className="text-bitcoin">{campaignTitle}</span></span>
           </DialogTitle>
         </DialogHeader>
 
@@ -269,14 +269,8 @@ export const PaymentModal = ({
               M-Pesa
             </TabsTrigger>
             <TabsTrigger value="bitcoin" className="gap-2 group">
-              <motion.img
-                src={bitcoinLogo}
-                alt="Bitcoin"
-                className="w-5 h-5"
-                whileHover={{ scale: 1.2, rotate: -5 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              />
-              Bitcoin
+              <Bitcoin className="w-4 h-4 text-bitcoin" />
+              Bitcoin ⚡
             </TabsTrigger>
           </TabsList>
 
@@ -441,13 +435,7 @@ export const PaymentModal = ({
                       </>
                     ) : (
                       <>
-                        <motion.img
-                          src={bitcoinLogo}
-                          alt="Bitcoin"
-                          className="w-5 h-5"
-                          whileHover={{ scale: 1.15, rotate: 360 }}
-                          transition={{ type: "spring", stiffness: 300 }}
-                        />
+                        <Zap className="w-5 h-5" />
                         Pay {satAmount.toLocaleString()} sats with Lightning
                       </>
                     )}

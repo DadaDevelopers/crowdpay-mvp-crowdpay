@@ -9,16 +9,24 @@ CREATE TABLE IF NOT EXISTS campaigns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(200) NOT NULL,
     description TEXT NOT NULL,
+    story TEXT,                                   -- Long-form campaign story
+    photos JSONB DEFAULT '[]'::jsonb,             -- Array of image data URLs / public URLs
     target_amount DECIMAL(15, 2) NOT NULL CHECK (target_amount > 0),
     current_amount DECIMAL(15, 2) NOT NULL DEFAULT 0 CHECK (current_amount >= 0),
     currency VARCHAR(10) NOT NULL DEFAULT 'SATS',
     creator_id VARCHAR(255) NOT NULL,
     creator_email VARCHAR(255),
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled', 'expired')),
+    is_public BOOLEAN NOT NULL DEFAULT TRUE,          -- If false, hidden from public Explore page
     end_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+-- Run these on existing databases to add the new columns:
+-- ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS story TEXT;
+-- ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS photos JSONB DEFAULT '[]'::jsonb;
+-- ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- Contributions Table
 -- Stores Lightning payment details from LNbits

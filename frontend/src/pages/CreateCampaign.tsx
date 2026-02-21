@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Store, Calendar, Shield, Loader2, Image as ImageIcon, Copy, Bitcoin, Smartphone, QrCode, MapPin, Clock, Users } from "lucide-react";
+import { Store, Calendar, Shield, Loader2, Image as ImageIcon, Copy, Bitcoin, Smartphone, QrCode, MapPin, Clock, Users, X, Plus } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,8 @@ const categoryLabels: Record<string, { label: string; emoji: string }> = {
   other: { label: "Other", emoji: "📦" },
 };
 
+const MAX_PHOTOS = 5;
+
 const CreateCampaign = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -47,11 +49,13 @@ const CreateCampaign = () => {
   const { createCampaign, refetchCampaigns } = useCampaigns();
   const { kesToSats: kesToSatsRate } = useBtcRate();
   const [loading, setLoading] = useState(false);
-  const [coverImagePreview, setCoverImagePreview] = useState<string>("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [storyCharCount, setStoryCharCount] = useState(0);
 
   const [formData, setFormData] = useState({
     title: "",
     description: "",
+    story: "",
     goal_amount: "",
     mode: "merchant" as "merchant" | "event" | "activism",
     category: "other",
@@ -74,23 +78,37 @@ const CreateCampaign = () => {
     }
   }, [formData.title, formData.slug]);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast({
-          title: "File too large",
-          description: "Please select an image under 5MB",
-          variant: "destructive",
-        });
-        return;
-      }
+  const handlePhotosSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const remaining = MAX_PHOTOS - photos.length;
+    if (remaining <= 0) {
+      toast({ title: "Max photos reached", description: `You can upload up to ${MAX_PHOTOS} photos`, variant: "destructive" });
+      return;
+    }
+
+    const toProcess = files.slice(0, remaining);
+    const oversized = toProcess.filter(f => f.size > 5 * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast({ title: "File too large", description: "Each photo must be under 5MB", variant: "destructive" });
+      return;
+    }
+
+    toProcess.forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setCoverImagePreview(reader.result as string);
+        setPhotos(prev => [...prev, reader.result as string]);
       };
       reader.readAsDataURL(file);
-    }
+    });
+
+    // Reset the input so the same file can be re-selected
+    e.target.value = "";
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -114,29 +132,24 @@ const CreateCampaign = () => {
     setLoading(true);
 
     try {
-      // Convert KES to satoshis for the target amount
       const targetInSats = formData.goal_amount
         ? kesToSats(parseFloat(formData.goal_amount), kesToSatsRate)
-        : 1000; // Default minimum if not specified
+        : 1000;
 
-      // Create campaign via backend API
       const newCampaign = await createCampaign({
         title: formData.title,
         description: formData.description || "No description provided.",
+        story: formData.story || undefined,
+        photos: photos.length > 0 ? photos : undefined,
+        is_public: formData.is_public,
         target_amount: targetInSats,
         currency: "SATS",
         end_date: formData.end_date || undefined,
       });
 
-      // Refetch campaigns to update the list
       refetchCampaigns();
 
-      toast({
-        title: "Campaign created!",
-        description: "Your campaign is now live.",
-      });
-
-      // Navigate to the new campaign page
+      toast({ title: "Campaign created!", description: "Your campaign is now live." });
       navigate(`/c/${newCampaign.id}`);
     } catch (error) {
       console.error("Error creating campaign:", error);
@@ -150,27 +163,20 @@ const CreateCampaign = () => {
     }
   };
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const campaignUrl = `${baseUrl}/c/${formData.slug || "your-campaign"}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(campaignUrl);
-    toast({
-      title: "Link copied!",
-      description: "Share it with your supporters",
-    });
+    toast({ title: "Link copied!", description: "Share it with your supporters" });
   };
 
   const formatEndDate = (dateString: string) => {
     if (!dateString) return null;
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      weekday: "short", month: "short", day: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
     });
   };
 
@@ -188,53 +194,54 @@ const CreateCampaign = () => {
             <p className="text-muted-foreground">Set up your fundraising event with full customization</p>
           </div>
         </div>
+
         <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-          {/* Form Section */}
+          {/* ── Form Section ── */}
           <Card>
             <CardContent>
               <form onSubmit={handleFormSubmit} className="space-y-6">
-                {/* Cover Image */}
+
+                {/* ── Photos Upload ── */}
                 <div className="space-y-2">
-                  <Label>Cover Image</Label>
-                  <div className="flex flex-col gap-4">
-                    {coverImagePreview ? (
-                      <div className="relative w-full h-48 rounded-lg overflow-hidden border">
-                        <img
-                          src={coverImagePreview}
-                          alt="Cover preview"
-                          className="w-full h-full object-cover"
-                        />
-                        <Button
+                  <Label>Photos <span className="text-muted-foreground text-xs">({photos.length}/{MAX_PHOTOS})</span></Label>
+                  <p className="text-xs text-muted-foreground">Upload up to {MAX_PHOTOS} photos to showcase your campaign. First photo is the cover.</p>
+
+                  {/* Photo grid */}
+                  <div className="grid grid-cols-5 gap-2">
+                    {photos.map((src, i) => (
+                      <div key={i} className="relative group w-full aspect-square rounded-lg overflow-hidden border bg-muted">
+                        <img src={src} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                        <button
                           type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="absolute top-2 right-2"
-                          onClick={() => setCoverImagePreview("")}
+                          onClick={() => removePhoto(i)}
+                          className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                         >
-                          Remove
-                        </Button>
+                          <X className="w-4 h-4 text-white" />
+                        </button>
+                        {i === 0 && (
+                          <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center py-0.5">Cover</span>
+                        )}
                       </div>
-                    ) : (
-                      <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer hover:bg-accent/50 transition-colors">
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <ImageIcon className="w-10 h-10 mb-3 text-muted-foreground" />
-                          <p className="mb-2 text-sm text-muted-foreground">
-                            <span className="font-semibold">Click to upload</span> or drag and drop
-                          </p>
-                          <p className="text-xs text-muted-foreground">PNG, JPG or WEBP (MAX. 5MB)</p>
-                        </div>
+                    ))}
+
+                    {/* Add photo button */}
+                    {photos.length < MAX_PHOTOS && (
+                      <label className="w-full aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-accent/50 transition-colors">
+                        <Plus className="w-5 h-5 text-muted-foreground mb-1" />
+                        <span className="text-[10px] text-muted-foreground">Add</span>
                         <input
                           type="file"
                           className="hidden"
                           accept="image/*"
-                          onChange={handleImageSelect}
+                          multiple
+                          onChange={handlePhotosSelect}
                         />
                       </label>
                     )}
                   </div>
                 </div>
 
-                {/* Title */}
+                {/* ── Title ── */}
                 <div className="space-y-2">
                   <Label htmlFor="title">Event Title *</Label>
                   <Input
@@ -246,7 +253,7 @@ const CreateCampaign = () => {
                   />
                 </div>
 
-                {/* Slug */}
+                {/* ── Slug ── */}
                 <div className="space-y-2">
                   <Label htmlFor="slug">Event URL</Label>
                   <div className="flex items-center gap-2">
@@ -262,28 +269,52 @@ const CreateCampaign = () => {
                   <p className="text-xs text-muted-foreground">This will be your event's unique URL</p>
                 </div>
 
-                {/* Description */}
+                {/* ── Short Description ── */}
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">Short Description</Label>
                   <Textarea
                     id="description"
-                    placeholder="Tell people about your event..."
+                    placeholder="One or two sentences summarising your campaign..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={4}
+                    rows={2}
                   />
                 </div>
 
-                {/* Category */}
+                {/* ── Story ── */}
+                <div className="space-y-2">
+                  <Label htmlFor="story">
+                    Your Story
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">(recommended)</span>
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Tell contributors the full story. Why does this matter? What will the money do? The more you share, the more people will connect with your cause.
+                  </p>
+                  <Textarea
+                    id="story"
+                    placeholder="Share your story here…
+
+Write about what inspired this campaign, how contributions will be used, and why this matters to you. Be as detailed as you'd like — people contribute more when they truly understand the cause."
+                    value={formData.story}
+                    onChange={(e) => {
+                      setFormData({ ...formData, story: e.target.value });
+                      setStoryCharCount(e.target.value.length);
+                    }}
+                    rows={8}
+                    maxLength={10000}
+                    className="resize-y"
+                  />
+                  <p className="text-xs text-right text-muted-foreground">{storyCharCount.toLocaleString()} / 10,000</p>
+                </div>
+
+                {/* ── Category ── */}
                 <div className="space-y-2">
                   <Label htmlFor="category">Event Category *</Label>
                   <Select
                     value={formData.category}
                     onValueChange={(value) => setFormData({ ...formData, category: value })}
                   >
-                    <SelectTrigger id="category">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger id="category"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="education">🎓 Education</SelectItem>
                       <SelectItem value="medical">🏥 Medical</SelectItem>
@@ -298,7 +329,7 @@ const CreateCampaign = () => {
                   </Select>
                 </div>
 
-                {/* Goal Amount */}
+                {/* ── Goal Amount ── */}
                 <div className="space-y-2">
                   <Label htmlFor="goal_amount">Goal Amount (KES)</Label>
                   <Input
@@ -313,7 +344,7 @@ const CreateCampaign = () => {
                   <p className="text-xs text-muted-foreground">Leave empty for no goal</p>
                 </div>
 
-                {/* End Date */}
+                {/* ── End Date ── */}
                 <div className="space-y-2">
                   <Label htmlFor="end_date">End Date (Optional)</Label>
                   <Input
@@ -324,7 +355,7 @@ const CreateCampaign = () => {
                   />
                 </div>
 
-                {/* Event Location - Only show for event mode */}
+                {/* ── Event Location ── */}
                 {formData.mode === "event" && (
                   <div className="space-y-2">
                     <Label htmlFor="event_location">Event Location</Label>
@@ -337,7 +368,7 @@ const CreateCampaign = () => {
                   </div>
                 )}
 
-                {/* Theme Color */}
+                {/* ── Theme Color ── */}
                 <div className="space-y-2">
                   <Label htmlFor="theme_color">Theme Color</Label>
                   <div className="flex items-center gap-3">
@@ -357,7 +388,7 @@ const CreateCampaign = () => {
                   </div>
                 </div>
 
-                {/* Mode Selection */}
+                {/* ── Mode Selection ── */}
                 <div className="space-y-3">
                   <Label>Event Type *</Label>
                   <RadioGroup
@@ -374,12 +405,9 @@ const CreateCampaign = () => {
                           <Store className="w-4 h-4" />
                           Merchant / POS
                         </div>
-                        <p className="text-sm text-muted-foreground font-normal">
-                          Perfect for shared bills and offline payments
-                        </p>
+                        <p className="text-sm text-muted-foreground font-normal">Perfect for shared bills and offline payments</p>
                       </Label>
                     </div>
-
                     <div className="flex items-start space-x-3 p-4 border rounded-lg hover:border-primary transition-colors">
                       <RadioGroupItem value="event" id="event" className="mt-1" />
                       <Label htmlFor="event" className="flex-1 cursor-pointer space-y-1">
@@ -387,12 +415,9 @@ const CreateCampaign = () => {
                           <Calendar className="w-4 h-4" />
                           Event / Social
                         </div>
-                        <p className="text-sm text-muted-foreground font-normal">
-                          Great for picnics, parties, and social gatherings
-                        </p>
+                        <p className="text-sm text-muted-foreground font-normal">Great for picnics, parties, and social gatherings</p>
                       </Label>
                     </div>
-
                     <div className="flex items-start space-x-3 p-4 border rounded-lg hover:border-primary transition-colors">
                       <RadioGroupItem value="activism" id="activism" className="mt-1" />
                       <Label htmlFor="activism" className="flex-1 cursor-pointer space-y-1">
@@ -400,21 +425,17 @@ const CreateCampaign = () => {
                           <Shield className="w-4 h-4" />
                           Activism / Cause
                         </div>
-                        <p className="text-sm text-muted-foreground font-normal">
-                          Ideal for protests, causes, and anonymous donations
-                        </p>
+                        <p className="text-sm text-muted-foreground font-normal">Ideal for protests, causes, and anonymous donations</p>
                       </Label>
                     </div>
                   </RadioGroup>
                 </div>
 
-                {/* Visibility */}
+                {/* ── Visibility ── */}
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="space-y-0.5">
                     <Label htmlFor="is_public">Public Event</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Make this event visible in the public gallery
-                    </p>
+                    <p className="text-sm text-muted-foreground">Make this event visible in the public gallery</p>
                   </div>
                   <Switch
                     id="is_public"
@@ -423,15 +444,9 @@ const CreateCampaign = () => {
                   />
                 </div>
 
-                {/* Submit Button */}
+                {/* ── Submit ── */}
                 <div className="flex gap-4 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate("/app")}
-                    disabled={loading}
-                    className="flex-1"
-                  >
+                  <Button type="button" variant="outline" onClick={() => navigate("/app")} disabled={loading} className="flex-1">
                     Cancel
                   </Button>
                   <Button type="submit" disabled={loading} className="flex-1">
@@ -443,27 +458,24 @@ const CreateCampaign = () => {
             </CardContent>
           </Card>
 
-          {/* Live Preview Section */}
+          {/* ── Live Preview Section ── */}
           <div className="space-y-6">
             <div className="sticky top-4">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <QrCode className="w-5 h-5" />
-                Live Preview - How contributors will see it
+                Live Preview – How contributors will see it
               </h3>
 
-              {/* Campaign Card Preview */}
               <Card className="overflow-hidden">
-                {coverImagePreview ? (
-                  <div className="w-full h-40 overflow-hidden">
-                    <img
-                      src={coverImagePreview}
-                      alt="Cover preview"
-                      className="w-full h-full object-cover"
-                    />
+                {/* Photo strip preview */}
+                {photos.length > 0 ? (
+                  <div className="w-full h-48 overflow-hidden">
+                    <img src={photos[0]} alt="Cover" className="w-full h-full object-cover" />
                   </div>
                 ) : (
-                  <div className="w-full h-40 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                  <div className="w-full h-48 bg-gradient-to-br from-primary/20 to-primary/5 flex flex-col items-center justify-center gap-2">
                     <ImageIcon className="w-12 h-12 text-muted-foreground/50" />
+                    <p className="text-xs text-muted-foreground">Add photos above to see the cover here</p>
                   </div>
                 )}
 
@@ -480,30 +492,26 @@ const CreateCampaign = () => {
 
                   {/* Description */}
                   {formData.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-3">
-                      {formData.description}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{formData.description}</p>
+                  )}
+
+                  {/* Story preview */}
+                  {formData.story && (
+                    <div className="border-l-2 pl-3" style={{ borderColor: formData.theme_color }}>
+                      <p className="text-sm text-muted-foreground line-clamp-4 whitespace-pre-wrap">{formData.story}</p>
+                    </div>
                   )}
 
                   {/* Event Details */}
                   {formData.mode === "event" && (
                     <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                       {formData.end_date && (
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-4 h-4" />
-                          <span>{formatEndDate(formData.end_date)}</span>
-                        </div>
+                        <div className="flex items-center gap-1.5"><Clock className="w-4 h-4" /><span>{formatEndDate(formData.end_date)}</span></div>
                       )}
                       {formData.event_location && (
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-4 h-4" />
-                          <span>{formData.event_location}</span>
-                        </div>
+                        <div className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /><span>{formData.event_location}</span></div>
                       )}
-                      <div className="flex items-center gap-1.5">
-                        <Users className="w-4 h-4" />
-                        <span>0 attending</span>
-                      </div>
+                      <div className="flex items-center gap-1.5"><Users className="w-4 h-4" /><span>0 attending</span></div>
                     </div>
                   )}
 
@@ -511,12 +519,8 @@ const CreateCampaign = () => {
                   {formData.goal_amount && (
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="font-semibold" style={{ color: formData.theme_color }}>
-                          KES 0
-                        </span>
-                        <span className="text-muted-foreground">
-                          of KES {Number(formData.goal_amount).toLocaleString()}
-                        </span>
+                        <span className="font-semibold" style={{ color: formData.theme_color }}>KES 0</span>
+                        <span className="text-muted-foreground">of KES {Number(formData.goal_amount).toLocaleString()}</span>
                       </div>
                       <Progress value={0} className="h-2" />
                     </div>
@@ -526,17 +530,10 @@ const CreateCampaign = () => {
                   <div className="pt-4 border-t space-y-4">
                     <div className="flex justify-center">
                       <div className="bg-white p-3 rounded-lg shadow-sm">
-                        <QRCodeSVG
-                          value={campaignUrl}
-                          size={140}
-                          level="M"
-                          fgColor={formData.theme_color}
-                        />
+                        <QRCodeSVG value={campaignUrl} size={140} level="M" fgColor={formData.theme_color} />
                       </div>
                     </div>
-                    <p className="text-xs text-center text-muted-foreground">
-                      Scan to contribute
-                    </p>
+                    <p className="text-xs text-center text-muted-foreground">Scan to contribute</p>
                   </div>
 
                   {/* Campaign Link */}
@@ -558,23 +555,15 @@ const CreateCampaign = () => {
 
                   {/* Payment Buttons Preview */}
                   <div className="grid grid-cols-2 gap-3 pt-2">
-                    <Button
-                      size="sm"
-                      style={{ backgroundColor: formData.theme_color }}
-                      className="text-white"
-                    >
-                      <Bitcoin className="w-4 h-4 mr-1.5" />
-                      Bitcoin
+                    <Button size="sm" style={{ backgroundColor: formData.theme_color }} className="text-white">
+                      <Bitcoin className="w-4 h-4 mr-1.5" />Bitcoin
                     </Button>
                     <Button size="sm" variant="secondary">
-                      <Smartphone className="w-4 h-4 mr-1.5" />
-                      M-Pesa
+                      <Smartphone className="w-4 h-4 mr-1.5" />M-Pesa
                     </Button>
                   </div>
 
-                  <p className="text-xs text-center text-muted-foreground">
-                    Powered by CrowdPay
-                  </p>
+                  <p className="text-xs text-center text-muted-foreground">Powered by CrowdPay</p>
                 </div>
               </Card>
 
@@ -586,12 +575,10 @@ const CreateCampaign = () => {
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" className="flex-1" onClick={copyLink}>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copy Link
+                    <Copy className="w-4 h-4 mr-2" />Copy Link
                   </Button>
                   <Button variant="outline" size="sm" className="flex-1">
-                    <QrCode className="w-4 h-4 mr-2" />
-                    Download QR
+                    <QrCode className="w-4 h-4 mr-2" />Download QR
                   </Button>
                 </div>
               </Card>
@@ -610,6 +597,8 @@ const CreateCampaign = () => {
               <ul className="list-disc list-inside text-sm space-y-1 mt-2">
                 <li><strong>Title:</strong> {formData.title || "Not set"}</li>
                 <li><strong>Category:</strong> {formData.category}</li>
+                <li><strong>Photos:</strong> {photos.length > 0 ? `${photos.length} photo(s)` : "No photos"}</li>
+                <li><strong>Story:</strong> {formData.story ? `${storyCharCount} characters` : "No story"}</li>
                 <li><strong>Goal:</strong> {formData.goal_amount ? `KES ${formData.goal_amount}` : "No goal set"}</li>
                 <li><strong>Type:</strong> {formData.mode}</li>
                 <li><strong>Visibility:</strong> {formData.is_public ? "Public" : "Private"}</li>

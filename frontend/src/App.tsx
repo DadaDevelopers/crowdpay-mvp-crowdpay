@@ -11,6 +11,7 @@ import { CampaignsProvider } from "@/contexts/CampaignsContext";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import CreateCampaign from "./pages/CreateCampaign";
+import EditCampaign from "./pages/EditCampaign";
 import Campaign from "./pages/Campaign";
 import ExploreCampaigns from "./pages/ExploreCampaigns";
 import SignIn from "./pages/SignIn";

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, validator
 
 
@@ -15,6 +15,9 @@ class Campaign(BaseModel):
     currency: str = Field(default="USD")
     creator_email: Optional[str] = None
     status: str = Field(default="active")
+    is_public: bool = Field(default=True)
+    story: Optional[str] = Field(None, max_length=10000)
+    photos: Optional[List[str]] = Field(default_factory=list)  # Base64 or URLs
     end_date: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

@@ -14,10 +14,13 @@ export interface Campaign {
   creator_email?: string;
   title: string;
   description: string;
+  story?: string;
+  photos?: string[];
   target_amount: number;
   current_amount: number;
   currency: string;
   status: "active" | "completed" | "cancelled" | "expired";
+  is_public: boolean;
   end_date?: string;
   created_at: string;
   updated_at?: string;
@@ -34,9 +37,25 @@ export interface CampaignStatistics {
 export interface CreateCampaignRequest {
   title: string;
   description: string;
+  story?: string;
+  photos?: string[];
+  is_public?: boolean;
   target_amount: number;
   currency?: string;
   end_date?: string;
+}
+
+export interface ContributionItem {
+  id: string;
+  campaign_id: string;
+  contributor_name: string | null;
+  amount: number;
+  currency: string;
+  message?: string | null;
+  is_anonymous: boolean;
+  payment_status: string;
+  created_at: string;
+  paid_at?: string | null;
 }
 
 export interface CampaignResponse {
@@ -220,8 +239,8 @@ export const campaignApi = {
    */
   getContributions: async (
     campaignId: string
-  ): Promise<{ contributions: unknown[]; count: number }> => {
-    return apiCall<{ contributions: unknown[]; count: number }>(
+  ): Promise<{ contributions: ContributionItem[]; count: number }> => {
+    return apiCall<{ contributions: ContributionItem[]; count: number }>(
       `/api/campaigns/${campaignId}/contributions`
     );
   },

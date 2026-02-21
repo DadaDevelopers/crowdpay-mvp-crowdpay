@@ -78,6 +78,9 @@ def get_campaigns():
 
         if creator_id:
             query = query.eq('creator_id', creator_id)
+        else:
+            # When no specific creator is requested, only show public campaigns
+            query = query.eq('is_public', True)
 
         response = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         campaigns = [Campaign.from_dict(c).dict() for c in response.data]
@@ -159,7 +162,8 @@ def update_campaign(campaign_id):
         
         # Update only allowed fields
         allowed_fields = [
-            'title', 'description', 'target_amount', 'status', 'end_date'
+            'title', 'description', 'target_amount', 'status', 'end_date',
+            'story', 'photos', 'is_public'
         ]
         
         update_data = {
