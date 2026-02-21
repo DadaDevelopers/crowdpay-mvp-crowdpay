@@ -1,0 +1,15 @@
+# Root-level netlify.toml
+# Netlify reads this from the repo root. The build.base tells it to cd into
+# the frontend folder where package.json lives.
+
+[build]
+  base    = "frontend/"
+  command = "npm run build"
+  publish = "dist/"
+
+# SPA redirect — all routes (including /edit/:id, /c/:id, etc.) serve index.html
+# so React Router handles them client-side.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
