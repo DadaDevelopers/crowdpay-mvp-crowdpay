@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import logging
 from config import Config
@@ -25,8 +25,25 @@ def create_app():
         logger.error(f"Configuration error: {str(e)}")
         raise
 
-    # Enable CORS
-    CORS(app, origins=Config.CORS_ORIGINS)
+    # Enable CORS with proper configuration
+    CORS(
+        app,
+        supports_credentials=True,
+        resources={
+            r"/api/*": {
+                "origins": Config.CORS_ORIGINS
+            }
+        },
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    )
+    
+        # Explicit OPTIONS handling (keeps browsers calm)
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            return "", 200
+
 
     # Register blueprints
     app.register_blueprint(campaigns_bp, url_prefix='/api/campaigns')

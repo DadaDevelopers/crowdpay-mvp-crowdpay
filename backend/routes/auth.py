@@ -1,3 +1,4 @@
+import os
 from flask import Blueprint, request, jsonify
 import logging
 import re
@@ -69,7 +70,6 @@ def session_to_dict(session):
         "token_type": getattr(session, "token_type", None)
     }
 
-
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
     """Register a new user using Supabase Auth with duplicate check"""
@@ -82,7 +82,6 @@ def signup():
         except ValueError as ve:
             # Return validation errors with specific field information
             error_msg = str(ve)
-            # Extract field name from pydantic error if possible
             if "username" in error_msg.lower():
                 field = "username"
             elif "password" in error_msg.lower() and "not match" not in error_msg.lower():
@@ -98,7 +97,7 @@ def signup():
                 'error': error_msg,
                 'field': field
             }), 400
-
+            
         # Check if email already exists in users table
         existing_email = supabase.table("users").select("*").eq("email", signup_data.email).execute()
         if existing_email.data:
@@ -106,7 +105,7 @@ def signup():
                 'error': 'Email already exists',
                 'field': 'email'
             }), 409
-
+            
         # Check if username already exists
         try:
             existing_username = supabase.table("users").select("*").eq("username", signup_data.username).execute()
@@ -117,8 +116,11 @@ def signup():
                 }), 409
         except Exception as username_error:
             logger.warning(f"Username check skipped: {str(username_error)}")
-
-        # Create user in Supabase Auth with email redirect configuration
+        
+        # Determine the redirect URL based on environment
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:8080')
+        
+        # Create user in Supabase Auth with correct redirect
         res = supabase.auth.sign_up({
             "email": signup_data.email,
             "password": signup_data.password,
@@ -126,57 +128,47 @@ def signup():
                 "data": {
                     "username": signup_data.username
                 },
-                "email_redirect_to": "http://localhost:8080/email-confirmed"
+                # IMPORTANT: No /app prefix
+                "email_redirect_to": f"{frontend_url}/auth/callback"
             }
         })
-
+        
         if res.user is None:
             return jsonify({
                 'error': 'Registration failed. Please try again.',
                 'field': 'general'
             }), 400
-
+        
         # Save extra user info in your users table
-        # IMPORTANT: Only save if user was created successfully
         user_data = {
             "id": res.user.id,
             "email": signup_data.email,
-            "username": signup_data.username
+            "username": signup_data.username,
+            "email_verified": False  # Track confirmation status
         }
         
         try:
             supabase.table("users").insert(user_data).execute()
         except Exception as db_error:
             logger.error(f"Failed to save user data: {str(db_error)}")
-            # User exists in Auth but not in users table
-            # This could happen if email confirmation is required
-            # We'll handle this in the email confirmation callback
-
-        # Check if email confirmation is required
-        message = "User registered successfully"
-        if res.session is None:
-            message = "User registered successfully. Please check your email to confirm your account."
+        
+        # Check if user has a session (they can sign in)
+        has_session = res.session is not None
         
         return jsonify({
-            "message": message,
+            "message": "Account created successfully! Please check your email to verify your account.",
             "user": user_data,
-            "session": session_to_dict(res.session),
-            "email_confirmation_required": res.session is None
+            "session": session_to_dict(res.session) if res.session else None,
+            "email_confirmation_sent": True,
+            "email_verified": False
         }), 201
-
+        
     except Exception as e:
         logger.error(f"Signup error: {str(e)}")
         
-        # Better error handling for email sending issues
         error_message = str(e)
         
-        if "Error sending confirmation email" in error_message:
-            return jsonify({
-                'error': 'Failed to send verification email. Please contact support or try again later.',
-                'field': 'general',
-                'details': 'Email service configuration issue'
-            }), 500
-        elif "User already registered" in error_message:
+        if "User already registered" in error_message:
             return jsonify({
                 'error': 'This email is already registered',
                 'field': 'email'
@@ -187,37 +179,168 @@ def signup():
                 'field': 'general'
             }), 500
 
-
 @auth_bp.route('/signin', methods=['POST'])
 def signin():
-    """Sign in an existing user using Supabase Auth"""
+    """Sign in an existing user"""
     try:
         data = request.get_json()
-        signin_data = SignInRequest(**data)
-
+        email = data.get('email')
+        password = data.get('password')
+        
+        if not email or not password:
+            return jsonify({
+                'error': 'Email and password are required',
+                'field': 'general'
+            }), 400
+        
+        # Sign in with Supabase
         res = supabase.auth.sign_in_with_password({
-            "email": signin_data.email,
-            "password": signin_data.password
+            "email": email,
+            "password": password
         })
-
-        if res.user is None:
-            return jsonify({'error': 'Invalid credentials'}), 401
-
-        # Fetch extra user info from users table
-        user_resp = supabase.table("users").select("*").eq("id", res.user.id).single().execute()
-        user_data = user_resp.data if user_resp.data else {"id": res.user.id, "email": res.user.email}
-
+        
+        if res.user is None or res.session is None:
+            return jsonify({
+                'error': 'Invalid email or password',
+                'field': 'general'
+            }), 401
+        
+        # Get user data from your users table
+        user_data = supabase.table("users").select("*").eq("id", res.user.id).execute()
+        
+        user_info = {
+            "id": res.user.id,
+            "email": res.user.email,
+            "username": user_data.data[0].get("username") if user_data.data else res.user.email.split("@")[0],
+            "email_verified": user_data.data[0].get("email_verified", False) if user_data.data else False
+        }
+        
         return jsonify({
-            "message": "Signed in successfully",
-            "user": user_data,
+            "message": "Sign in successful",
+            "user": user_info,
             "session": session_to_dict(res.session)
         }), 200
-
+            
     except Exception as e:
         logger.error(f"Signin error: {str(e)}")
-        return jsonify({'error': 'Invalid credentials'}), 401
+        return jsonify({
+            'error': 'Sign in failed. Please try again.',
+            'field': 'general'
+        }), 500
+        
+#resend verification email
+@auth_bp.route('/resend-verification', methods=['POST'])
+def resend_verification():
+    """Resend email verification"""
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        
+        if not email:
+            return jsonify({
+                'error': 'Email is required',
+                'field': 'email'
+            }), 400
+        
+        # Get frontend URL
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:8080')
+        
+        # Resend verification email via Supabase
+        try:
+            supabase.auth.resend({
+                "type": "signup",
+                "email": email,
+                "options": {
+                    "email_redirect_to": f"{frontend_url}/auth/callback"
+                }
+            })
+            
+            # Update reminder timestamp
+            supabase.table("users").update({
+                "verification_reminder_sent_at": "now()"
+            }).eq("email", email).execute()
+            
+            return jsonify({
+                "message": "Verification email sent! Check your inbox."
+            }), 200
+            
+        except Exception as resend_error:
+            logger.error(f"Resend verification error: {str(resend_error)}")
+            return jsonify({
+                'error': 'Failed to send verification email. Please try again.',
+                'field': 'general'
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Resend verification error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to send verification email.',
+            'field': 'general'
+        }), 500       
 
-
+# Email confirmation route to handle the redirect from the confirmation email link
+@auth_bp.route('/confirm-email', methods=['POST'])
+def confirm_email():
+    """Confirm user email using token hash"""
+    try:
+        data = request.get_json()
+        token_hash = data.get('token_hash')
+        
+        if not token_hash:
+            return jsonify({
+                'error': 'Token hash is required',
+                'field': 'general'
+            }), 400
+        
+        # Verify the email with Supabase
+        try:
+            res = supabase.auth.verify_otp({
+                'token_hash': token_hash,
+                'type': 'email'
+            })
+            
+            if res.user is None:
+                return jsonify({
+                    'error': 'Invalid or expired confirmation link',
+                    'field': 'general'
+                }), 400
+            
+            # Update user's email_verified status
+            try:
+                from datetime import datetime
+                supabase.table("users").update({
+                    "email_verified": True,
+                    "email_verified_at": datetime.utcnow().isoformat()
+                }).eq("id", res.user.id).execute()
+                
+                logger.info(f"Email verified for user: {res.user.id}")
+            except Exception as db_error:
+                logger.warning(f"Failed to update email_verified status: {str(db_error)}")
+            
+            return jsonify({
+                "message": "Email verified successfully!",
+                "user": {
+                    "id": res.user.id,
+                    "email": res.user.email,
+                    "email_verified": True
+                }
+            }), 200
+            
+        except Exception as verify_error:
+            logger.error(f"Email verification error: {str(verify_error)}")
+            return jsonify({
+                'error': 'Invalid or expired confirmation link',
+                'field': 'general'
+            }), 400
+        
+    except Exception as e:
+        logger.error(f"Confirm email error: {str(e)}")
+        return jsonify({
+            'error': 'Email confirmation failed. Please try again.',
+            'field': 'general'
+        }), 500
+        
+        
 @auth_bp.route('/signout', methods=['POST'])
 def signout():
     """Sign out user"""

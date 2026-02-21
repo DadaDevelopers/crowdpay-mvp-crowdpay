@@ -39,15 +39,14 @@ const App = () => (
             <MockAuthProvider>
               <CampaignsProvider>
                 <Routes>
-                  {/* Public routes */}
                   <Route path="/" element={<Landing />} />
                   <Route path="/signin" element={<SignIn />} />
                   <Route path="/signup" element={<SignUp />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
-
-                  {/* Auth callback — uncomment when Google Auth is wired up */}
+                  
+                  {/* Auth callback MUST come before protected routes */}
                   {/* <Route path="/auth/callback" element={<AuthCallback />} /> */}
-
+                  
                   {/* Protected routes */}
                   <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />
                   <Route path="/explore" element={<ExploreCampaigns />} />
@@ -58,11 +57,8 @@ const App = () => (
                   <Route path="/notifications" element={<AppLayout><Notifications /></AppLayout>} />
                   <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
                   <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
-
-                  {/* Campaign public & edit routes */}
                   <Route path="/c/:id" element={<Campaign />} />
-                  <Route path="/edit/:id" element={<AppLayout><EditCampaign /></AppLayout>} />
-
+                  
                   {/* 404 must be last */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>

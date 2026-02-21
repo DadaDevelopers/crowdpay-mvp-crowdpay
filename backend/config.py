@@ -22,6 +22,8 @@ class Config:
     LNBITS_ADMIN_KEY = os.getenv('LNBITS_ADMIN_KEY')  # Full access - keep secure!
     LNBITS_INVOICE_KEY = os.getenv('LNBITS_INVOICE_KEY')  # Read-only, safe for invoices
     LNBITS_WEBHOOK_URL = os.getenv('LNBITS_WEBHOOK_URL', '')  # Optional webhook for payment notifications
+    
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080')
 
     # Polling Configuration
     POLLING_INTERVAL = int(os.getenv('POLLING_INTERVAL', '30'))  # seconds
@@ -29,23 +31,29 @@ class Config:
 
     # Platform Fee Configuration (percentage)
     PLATFORM_FEE_PERCENT = float(os.getenv('PLATFORM_FEE_PERCENT', '2.5'))
-
+    
     # CORS
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
+    CORS_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv("CORS_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
 
     @classmethod
     def validate(cls):
-        """Validate required configuration"""
         required = [
-            'SUPABASE_URL',
-            'SUPABASE_KEY',
-            'LNBITS_URL',
-            'LNBITS_INVOICE_KEY'
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+            "LNBITS_URL",
+            "LNBITS_INVOICE_KEY",
         ]
 
         missing = [key for key in required if not getattr(cls, key)]
 
         if missing:
             raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+
+        if not cls.CORS_ORIGINS:
+            raise ValueError("CORS_ORIGINS is empty or misconfigured")
 
         return True

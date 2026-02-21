@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopNavbar } from "@/components/TopNavbar";
+// import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { useAuth } from "@/contexts/MockAuthContext";
 
 interface AppLayoutProps {
@@ -41,6 +42,10 @@ export function AppLayout({ children }: AppLayoutProps) {
             <TopNavbar />
           </header>
           <main className="flex-1 overflow-auto">
+            {/* Add the verification banner at the top of the main content */}
+            {/* <div className="container mx-auto px-4 pt-4">
+              <EmailVerificationBanner />
+            </div> */}
             {children}
           </main>
         </div>

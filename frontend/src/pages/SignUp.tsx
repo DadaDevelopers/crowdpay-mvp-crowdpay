@@ -110,12 +110,13 @@ const SignUp = () => {
         });
       }
 
-      await signUp(email, password, username || email.split("@")[0]);
+      const response = await signUp(email, password, username || email.split("@")[0]);
 
-      toast({
-        title: "Account Created!",
-        description: "Welcome to CrowdPay.",
-      });
+      // toast({
+      //   title: "Account Created!",
+      //   description: "Please check your email to verify your account. You can still use CrowdPay while unverified.",
+      //   duration: 6000, // Show longer
+      // });
 
       navigate("/app");
     } catch (error) {
@@ -129,7 +130,6 @@ const SignUp = () => {
       setSubmitting(false);
     }
   };
-
   const handleBack = () => {
     setStep(1);
   };
