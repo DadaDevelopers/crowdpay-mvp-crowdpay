@@ -11,6 +11,7 @@ import { CampaignsProvider } from "@/contexts/CampaignsContext";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import CreateCampaign from "./pages/CreateCampaign";
+import EditCampaign from "./pages/EditCampaign";
 import Campaign from "./pages/Campaign";
 import ExploreCampaigns from "./pages/ExploreCampaigns";
 import SignIn from "./pages/SignIn";
@@ -36,23 +37,24 @@ const App = () => (
           <BrowserRouter>
             <MockAuthProvider>
               <CampaignsProvider>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/signin" element={<SignIn />} />
-                <Route path="/signup" element={<SignUp />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />
-                <Route path="/explore" element={<ExploreCampaigns />} />
-                <Route path="/create" element={<AppLayout><CreateCampaign /></AppLayout>} />
-                <Route path="/my-links" element={<AppLayout><MyLinks /></AppLayout>} />
-                <Route path="/contributions" element={<AppLayout><Contributions /></AppLayout>} />
-                <Route path="/wallet" element={<AppLayout><Wallet /></AppLayout>} />
-                <Route path="/notifications" element={<AppLayout><Notifications /></AppLayout>} />
-                <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
-                <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
-                <Route path="/c/:id" element={<Campaign />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+                <Routes>
+                  <Route path="/" element={<Landing />} />
+                  <Route path="/signin" element={<SignIn />} />
+                  <Route path="/signup" element={<SignUp />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/app" element={<AppLayout><Dashboard /></AppLayout>} />
+                  <Route path="/explore" element={<ExploreCampaigns />} />
+                  <Route path="/create" element={<AppLayout><CreateCampaign /></AppLayout>} />
+                  <Route path="/my-links" element={<AppLayout><MyLinks /></AppLayout>} />
+                  <Route path="/contributions" element={<AppLayout><Contributions /></AppLayout>} />
+                  <Route path="/wallet" element={<AppLayout><Wallet /></AppLayout>} />
+                  <Route path="/notifications" element={<AppLayout><Notifications /></AppLayout>} />
+                  <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
+                  <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
+                  <Route path="/c/:id" element={<Campaign />} />
+                  <Route path="/edit/:id" element={<AppLayout><EditCampaign /></AppLayout>} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
               </CampaignsProvider>
             </MockAuthProvider>
           </BrowserRouter>
