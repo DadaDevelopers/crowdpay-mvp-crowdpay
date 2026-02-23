@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Zap, Store, Users, Shield, Globe, Lock, ArrowRight, ChevronRight, Share2, Sun, Moon, Mail } from "lucide-react";
+import { Zap, Store, Users, Shield, Globe, Lock, ArrowRight, ChevronRight, Share2, Sun, Moon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import Footer from "@/components/Footer";
@@ -98,7 +98,201 @@ const fadeInUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
 };
 
+// ── Stacked Card Carousel for Benefits (“Why CrowdPay”) ──
+const BENEFIT_COLORS: Record<string, { bg: string; accent: string; dot: string }> = {
+  "yellow-500": { bg: "bg-[#2e2a10]", accent: "text-yellow-400", dot: "bg-yellow-400" },
+  "blue-500": { bg: "bg-[#0f1e3a]", accent: "text-blue-400", dot: "bg-blue-400" },
+  "green-500": { bg: "bg-[#0e2a1a]", accent: "text-green-400", dot: "bg-green-400" },
+  primary: { bg: "bg-[#2a1f3a]", accent: "text-primary", dot: "bg-primary" },
+};
+
+const BenefitsCarousel = () => {
+  const [active, setActive] = useState(0);
+  const advance = () => setActive((prev) => (prev + 1) % BENEFITS.length);
+
+  const getCardProps = (index: number) => {
+    const total = BENEFITS.length;
+    const offset = ((index - active + total) % total);
+    if (offset === 0) return { x: "0%", scale: 1, zIndex: 30, opacity: 1 };
+    if (offset === 1) return { x: "42%", scale: 0.88, zIndex: 20, opacity: 0.85 };
+    if (offset === 2) return { x: "-42%", scale: 0.88, zIndex: 20, opacity: 0.85 };
+    return { x: "0%", scale: 0.76, zIndex: 10, opacity: 0 };
+  };
+
+  return (
+    <section className="py-20 sm:py-28 px-4 bg-[#080b10]">
+      <div className="container mx-auto max-w-5xl">
+        <motion.div
+          initial="hidden" whileInView="visible" variants={fadeInUp} viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">
+            Why <span className="text-primary">CrowdPay</span>?
+          </h2>
+          <p className="text-white/50 text-lg">Built for speed, privacy, and global reach</p>
+        </motion.div>
+
+        <div
+          className="relative h-[340px] flex items-center justify-center cursor-pointer select-none"
+          onClick={advance}
+        >
+          {BENEFITS.map((item, i) => {
+            const { x, scale, zIndex, opacity } = getCardProps(i);
+            const colors = BENEFIT_COLORS[item.color] ?? BENEFIT_COLORS["primary"];
+            const isActive = ((i - active + BENEFITS.length) % BENEFITS.length) === 0;
+            return (
+              <motion.div
+                key={i}
+                animate={{ x, scale, opacity, zIndex }}
+                transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                className={`absolute w-full max-w-sm rounded-3xl p-8 ${colors.bg} border border-white/10 shadow-2xl`}
+                style={{ zIndex }}
+              >
+                <div className={`w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-5`}>
+                  <item.icon className={`w-6 h-6 ${colors.accent}`} />
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-3">{item.title}</h3>
+                {isActive ? (
+                  <AnimatePresence>
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <p className="text-white/60 text-sm leading-relaxed">{item.fullDesc}</p>
+                      <span className={`inline-block mt-4 text-xs font-semibold px-3 py-1 rounded-full border ${colors.accent} border-white/20 bg-white/5`}>
+                        {item.shortDesc}
+                      </span>
+                    </motion.div>
+                  </AnimatePresence>
+                ) : (
+                  <p className="text-white/40 text-sm">{item.shortDesc}</p>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-center gap-2 mt-10">
+          {BENEFITS.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              className={`rounded-full transition-all ${i === active ? "bg-white w-6 h-2" : "bg-white/30 w-2 h-2"}`}
+            />
+          ))}
+        </div>
+        <p className="text-center text-white/30 text-xs mt-4">Click to explore</p>
+      </div>
+    </section>
+  );
+};
+
+// ── Stacked Card Carousel for Modes ──
+const CARD_COLORS: Record<string, { bg: string; accent: string; dot: string }> = {
+  primary: { bg: "bg-[#2a2f4a]", accent: "text-primary", dot: "bg-primary" },
+  mpesa: { bg: "bg-[#1a3a2a]", accent: "text-mpesa", dot: "bg-mpesa" },
+  "purple-500": { bg: "bg-[#2e1a3a]", accent: "text-purple-400", dot: "bg-purple-400" },
+};
+
+const ModeCarousel = () => {
+  const [active, setActive] = useState(1); // start at center
+
+  const advance = () => setActive((prev) => (prev + 1) % MODES.length);
+
+  // position offsets for the 3 cards relative to active
+  const getCardProps = (index: number) => {
+    const total = MODES.length;
+    const offset = ((index - active + total) % total);
+    // offset 0 = center/front, 1 = right-back, 2 = left-back
+    if (offset === 0) return { x: "0%", scale: 1, zIndex: 20, opacity: 1, brightness: "brightness-100" };
+    if (offset === 1) return { x: "38%", scale: 0.88, zIndex: 10, opacity: 0.85, brightness: "brightness-75" };
+    return { x: "-38%", scale: 0.88, zIndex: 10, opacity: 0.85, brightness: "brightness-75" };
+  };
+
+  return (
+    <section id="features" className="py-20 sm:py-28 px-4 bg-[#0f1117]">
+      <div className="container mx-auto max-w-5xl">
+        <motion.div
+          initial="hidden" whileInView="visible" variants={fadeInUp} viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">
+            Three Modes, <span className="text-primary">Endless Possibilities</span>
+          </h2>
+          <p className="text-white/50 text-lg">Choose the perfect mode for your needs</p>
+        </motion.div>
+
+        {/* Card stack */}
+        <div
+          className="relative h-[380px] flex items-center justify-center cursor-pointer select-none"
+          onClick={advance}
+        >
+          {MODES.map((mode, i) => {
+            const { x, scale, zIndex, opacity } = getCardProps(i);
+            const colors = CARD_COLORS[mode.color] ?? CARD_COLORS["primary"];
+            const isActive = ((i - active + MODES.length) % MODES.length) === 0;
+            return (
+              <motion.div
+                key={i}
+                animate={{ x, scale, opacity, zIndex }}
+                transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                className={`absolute w-full max-w-sm rounded-3xl p-8 ${colors.bg} border border-white/10 shadow-2xl`}
+                style={{ zIndex }}
+              >
+                {/* Icon */}
+                <div className={`w-12 h-12 rounded-2xl ${colors.bg} border border-white/20 flex items-center justify-center mb-6`}>
+                  <mode.icon className={`w-6 h-6 ${colors.accent}`} />
+                </div>
+
+                <h3 className="text-2xl font-bold text-white mb-3">{mode.title}</h3>
+
+                {isActive ? (
+                  <AnimatePresence>
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <p className="text-white/60 text-sm leading-relaxed mb-5">{mode.fullDesc}</p>
+                      <ul className="space-y-2">
+                        {mode.items.map((item) => (
+                          <li key={item} className="flex items-center gap-2 text-sm text-white/70">
+                            <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </motion.div>
+                  </AnimatePresence>
+                ) : (
+                  <p className="text-white/40 text-sm">{mode.shortDesc}</p>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Dots */}
+        <div className="flex justify-center gap-2 mt-10">
+          {MODES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              className={`rounded-full transition-all ${i === active ? "bg-white w-6 h-2" : "bg-white/30 w-2 h-2"}`}
+            />
+          ))}
+        </div>
+        <p className="text-center text-white/30 text-xs mt-4">Click to explore next</p>
+      </div>
+    </section>
+  );
+};
+
 const Landing = () => {
+
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isDark, setIsDark] = useState(() => {
@@ -158,39 +352,52 @@ const Landing = () => {
 
         {/* Top left description removed for main hero use */}
 
-        {/* Navbar */}
-        <nav className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4 bg-black/40 backdrop-blur-md border-b border-white/10">
+        {/* Navbar – MissFit style */}
+        <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
           <div className="container mx-auto flex justify-between items-center">
+            {/* Logo */}
             <div className="flex items-center gap-2">
-              <img src={logo} alt="CrowdPay" className="h-8 w-8 sm:h-10 sm:w-10" />
-              <span className="font-bold text-xl sm:text-2xl text-white">CrowdPay</span>
+              <img src={logo} alt="CrowdPay" className="h-7 w-7" />
+              <span className="font-bold text-lg text-white">CrowdPay</span>
             </div>
-            <div className="hidden md:flex gap-8">
-              {["Features", "How it Works", "Browse Events", "Contact"].map((item) => (
+
+            {/* Centered pill nav */}
+            <div className="hidden md:flex items-center gap-1 bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-2 py-1.5">
+              {[
+                { label: "Features", href: "#features" },
+                { label: "How it Works", href: "#how-it-works" },
+                { label: "Explore", href: "/explore" },
+                { label: "Contact", href: "#footer" },
+              ].map((item) => (
                 <a
-                  key={item}
-                  href={item === "Browse Events" ? "/explore" : item === "Contact" ? "#footer" : `#${item.toLowerCase().replace(/ /g, '-')}`}
-                  className="text-sm text-white/80 hover:text-white transition-colors"
-                  onClick={item === "Contact" ? (e) => {
+                  key={item.label}
+                  href={item.href}
+                  onClick={item.href === "#footer" ? (e) => {
                     e.preventDefault();
                     document.getElementById('footer')?.scrollIntoView({ behavior: 'smooth' });
                   } : undefined}
+                  className="text-sm text-white/80 hover:text-white hover:bg-white/10 transition-all px-4 py-1.5 rounded-full"
                 >
-                  {item}
+                  {item.label}
                 </a>
               ))}
             </div>
+
+            {/* Right actions */}
             <div className="flex items-center gap-2">
               <Button
                 onClick={toggleTheme}
-                variant="secondary"
+                variant="ghost"
                 size="icon"
-                className="bg-white/10 backdrop-blur-sm text-white hover:bg-white/20"
+                className="text-white/70 hover:text-white hover:bg-white/10 rounded-full"
                 aria-label="Toggle theme"
               >
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
-              <Button onClick={() => navigate("/signin")} variant="secondary" size="sm" className="bg-white/10 backdrop-blur-sm text-white hover:bg-white/20">
+              <Button
+                onClick={() => navigate("/signin")}
+                className="rounded-full bg-white text-black hover:bg-white/90 font-semibold text-sm px-5 py-2 h-auto"
+              >
                 Sign In
               </Button>
             </div>
@@ -216,9 +423,9 @@ const Landing = () => {
               <span className="block text-lg sm:text-xl font-semibold text-white/80 mt-4">enabling fundraising with global payment options.</span>
             </motion.p>
             <div className="flex justify-center gap-4">
-              <Button size="lg" onClick={() => navigate("/signup")} className="bg-primary/90 hover:bg-primary text-lg px-8 py-6">
+              <Button size="lg" onClick={() => navigate("/signup")} className="rounded-full bg-primary/90 hover:bg-primary text-lg px-8 py-6">
                 <Zap className="mr-2 h-5 w-5" /> Get Started
-                <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                <ChevronRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -232,46 +439,8 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Three Modes Section (HOVER REVEAL ADDED) */}
-      <section id="features" className="py-16 sm:py-24 px-4 bg-background">
-        <div className="container mx-auto max-w-6xl">
-          <motion.div initial="hidden" whileInView="visible" variants={fadeInUp} viewport={{ once: true }} className="text-center mb-12">
-            <h2 className="text-3xl sm:text-5xl font-bold mb-4">Three Modes, <span className="text-primary">Endless Possibilities</span></h2>
-            <p className="text-muted-foreground text-lg">Choose the perfect mode for your needs</p>
-          </motion.div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {MODES.map((mode, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} viewport={{ once: true }}>
-                <Card className="p-8 h-full bg-card/80 hover:shadow-xl transition-all group relative overflow-hidden cursor-pointer border-border/50">
-                  <div className="relative z-10">
-                    <div className={`w-14 h-14 rounded-xl bg-${mode.color}/10 flex items-center justify-center mb-6`}>
-                      <mode.icon className={`w-7 h-7 text-${mode.color}`} />
-                    </div>
-                    <h3 className="text-2xl font-bold mb-2 group-hover:text-primary transition-colors">{mode.title}</h3>
-                    <p className="text-muted-foreground mb-4">{mode.shortDesc}</p>
-
-                    {/* --- HOVER REVEAL LOGIC START --- */}
-                    <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-500 ease-in-out opacity-0 group-hover:opacity-100">
-                      <div className="overflow-hidden">
-                        <p className="text-sm text-muted-foreground mb-3 pt-2 border-t border-border/50">{mode.fullDesc}</p>
-                        <ul className="space-y-2 text-sm text-muted-foreground">
-                          {mode.items.map((item) => (
-                            <li key={item} className="flex items-center gap-2">
-                              <span className={`w-1.5 h-1.5 rounded-full bg-${mode.color}`} /> {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                    {/* --- HOVER REVEAL LOGIC END --- */}
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Three Modes – Stacked Card Carousel */}
+      <ModeCarousel />
 
       {/* How It Works */}
       <section id="how-it-works" className="py-16 sm:py-24 px-4 bg-secondary dark:bg-slate-900 text-foreground dark:text-white">
@@ -298,80 +467,19 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Why Choose & Payment Methods Combined Grid */}
-      <section className="py-16 sm:py-24 px-4 bg-background">
-        <div className="container mx-auto max-w-6xl">
-          {/* Benefits */}
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-5xl font-bold mb-4">Why <span className="text-primary">CrowdPay</span>?</h2>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-20">
-            {BENEFITS.map((item, i) => (
-              <motion.div key={i} initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.1 }} viewport={{ once: true }}>
-                <Card className="p-6 text-center h-full hover:border-primary/50 transition-colors group">
-                  <item.icon className={`w-8 h-8 text-${item.color} mx-auto mb-3`} />
-                  <h3 className="font-bold mb-1 group-hover:text-primary">{item.title}</h3>
-                  <p className="text-xs text-muted-foreground mb-2">{item.shortDesc}</p>
-                  <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-300 opacity-0 group-hover:opacity-100">
-                    <p className="text-xs text-muted-foreground/80 overflow-hidden">{item.fullDesc}</p>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Payment Methods (HOVER REVEAL ADDED) */}
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold">Accept <span className="text-primary">Multiple</span> Payments</h2>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <Card className="p-8 border-bitcoin/30 bg-bitcoin/5 hover:border-bitcoin/50 transition-all group">
-              <div className="flex items-center gap-4 mb-4">
-                <img src={bitcoinLogo} alt="Bitcoin" className="w-12 h-12" />
-                <h3 className="text-2xl font-bold">Pay with Bitcoin</h3>
-              </div>
-
-              {/* --- HOVER REVEAL LOGIC START --- */}
-              <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-500 ease-in-out opacity-0 group-hover:opacity-100">
-                <ul className="space-y-2 text-muted-foreground overflow-hidden pt-2">
-                  <li className="flex gap-2 items-center"><Zap className="w-4 h-4 text-bitcoin" /> Lightning Network</li>
-                  <li className="flex gap-2 items-center"><Lock className="w-4 h-4 text-bitcoin" /> On-chain & Global</li>
-                  <li className="flex gap-2 items-center"><Globe className="w-4 h-4 text-bitcoin" /> Borderless Payments</li>
-                </ul>
-              </div>
-              {/* --- HOVER REVEAL LOGIC END --- */}
-            </Card>
-
-            <Card className="p-8 border-mpesa/30 bg-mpesa/5 hover:border-mpesa/50 transition-all group">
-              <div className="flex items-center gap-4 mb-4">
-                <img src={mpesaLogo} alt="M-Pesa" className="w-12 h-12 rounded object-contain" />
-                <h3 className="text-2xl font-bold">Pay with M-Pesa</h3>
-              </div>
-
-              {/* --- HOVER REVEAL LOGIC START --- */}
-              <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-500 ease-in-out opacity-0 group-hover:opacity-100">
-                <ul className="space-y-2 text-muted-foreground overflow-hidden pt-2">
-                  <li className="flex gap-2 items-center"><ArrowRight className="w-4 h-4 text-mpesa" /> Instant KES to BTC conversion</li>
-                  <li className="flex gap-2 items-center"><Shield className="w-4 h-4 text-mpesa" /> Familiar local experience</li>
-                  <li className="flex gap-2 items-center"><Users className="w-4 h-4 text-mpesa" /> No wallet needed for donors</li>
-                </ul>
-              </div>
-              {/* --- HOVER REVEAL LOGIC END --- */}
-            </Card>
-          </div>
-        </div>
-      </section>
+      {/* Why CrowdPay & Payment Methods */}
+      <BenefitsCarousel />
 
       {/* CTA */}
       <motion.section className="py-24 px-4 bg-gradient-to-br from-primary to-orange-600 text-white text-center">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
           <h2 className="text-3xl md:text-5xl font-bold mb-6 md:mb-8">Ready to Start Accepting Bitcoin?</h2>
           <motion.div className="flex justify-center gap-4">
-            <Button size="lg" variant="secondary" onClick={() => navigate("/signup")} className="text-md md:text-xl px-4 md:px-8 py-4 md:py-6">
+            <Button size="lg" variant="secondary" onClick={() => navigate("/signup")} className="rounded-full text-md md:text-xl px-6 md:px-10 py-4 md:py-6">
               Create Your Link
               <ChevronRight className="ml-2 h-5 w-5" />
-              </Button>
-            <Button size="lg" variant="outline" className="text-md md:text-xl px-8 py-4 md:py-6 bg-transparent border-white text-white hover:text-black hover:bg-white/10">Learn More</Button>
+            </Button>
+            <Button size="lg" variant="outline" className="rounded-full text-md md:text-xl px-8 py-4 md:py-6 bg-transparent border-white text-white hover:bg-white/10">Learn More</Button>
           </motion.div>
         </motion.div>
       </motion.section>
