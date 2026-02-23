@@ -58,6 +58,7 @@ const App = () => (
                   <Route path="/settings" element={<AppLayout><ProfileSettings /></AppLayout>} />
                   <Route path="/support" element={<AppLayout><Support /></AppLayout>} />
                   <Route path="/c/:id" element={<Campaign />} />
+                  <Route path="/edit/:id" element={<AppLayout><EditCampaign /></AppLayout>} />
                   
                   {/* 404 must be last */}
                   <Route path="*" element={<NotFound />} />

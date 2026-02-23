@@ -25,7 +25,7 @@ const EditCampaign = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { toast } = useToast();
-    const { user, session } = useAuth();
+    const { user, session, refreshSession } = useAuth();
 
     const [loadingData, setLoadingData] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -103,10 +103,32 @@ const EditCampaign = () => {
     // ── Save ──
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!id || !session?.access_token) return;
+        if (!id) return;
 
         setSaving(true);
         try {
+            // Always try to get a fresh token before saving
+            let token = session?.access_token;
+            if (!token) {
+                const refreshed = await refreshSession();
+                token = refreshed?.access_token;
+            } else {
+                // Proactively refresh in case the current token is near-expired
+                const expiresAt = localStorage.getItem("crowdpay_session_expires_at");
+                const nowSeconds = Math.floor(Date.now() / 1000);
+                const isNearExpiry = expiresAt && Number(expiresAt) - nowSeconds < 300;
+                if (isNearExpiry) {
+                    const refreshed = await refreshSession();
+                    if (refreshed?.access_token) token = refreshed.access_token;
+                }
+            }
+
+            if (!token) {
+                toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+                setSaving(false);
+                return;
+            }
+
             await campaignApi.update(
                 id,
                 {
@@ -117,7 +139,7 @@ const EditCampaign = () => {
                     is_public: formData.is_public,
                     end_date: formData.end_date || undefined,
                 },
-                session.access_token
+                token
             );
 
             toast({ title: "Campaign updated!", description: "Your changes have been saved." });
