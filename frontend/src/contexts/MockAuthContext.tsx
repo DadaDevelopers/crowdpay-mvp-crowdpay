@@ -29,6 +29,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshSession: () => Promise<Session | null>;
 }
 
 const defaultWallet: WalletData = {
@@ -46,38 +47,84 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [wallet, setWalletState] = useState<WalletData | null>(null);
 
+  // ── Token refresh helper ──
+  const tryRefreshToken = async (refreshToken: string): Promise<Session | null> => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const newSession: Session = {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      };
+      localStorage.setItem("crowdpay_session", JSON.stringify(newSession));
+      if (data.session.expires_at) {
+        localStorage.setItem("crowdpay_session_expires_at", String(data.session.expires_at));
+      }
+      return newSession;
+    } catch {
+      return null;
+    }
+  };
+
+  // Exposed refresh — can be called from any component before protected API calls
+  const refreshSession = async (): Promise<Session | null> => {
+    const stored = localStorage.getItem("crowdpay_session");
+    if (!stored) return null;
+    const parsed: Session = JSON.parse(stored);
+    if (!parsed.refresh_token) return null;
+    const refreshed = await tryRefreshToken(parsed.refresh_token);
+    if (refreshed) setSession(refreshed);
+    return refreshed;
+  };
+
   // Check localStorage for existing session and wallet on mount
   useEffect(() => {
-    try {
-      // Restore user session
-      const storedUser = localStorage.getItem("crowdpay_user");
-      const storedSession = localStorage.getItem("crowdpay_session");
+    const restore = async () => {
+      try {
+        const storedUser = localStorage.getItem("crowdpay_user");
+        const storedSession = localStorage.getItem("crowdpay_session");
 
-      if (storedUser && storedSession) {
-        const parsedUser = JSON.parse(storedUser);
-        const parsedSession = JSON.parse(storedSession);
-        setUser(parsedUser);
-        setSession(parsedSession);
-      }
+        if (storedUser && storedSession) {
+          const parsedUser: User = JSON.parse(storedUser);
+          let parsedSession: Session = JSON.parse(storedSession);
 
-      // Restore wallet data
-      const storedWallet = localStorage.getItem("crowdpay_wallet");
-      if (storedWallet) {
-        const parsedWallet = JSON.parse(storedWallet);
-        setWalletState(parsedWallet);
+          // Refresh if token is expired or within 5 minutes of expiry
+          const expiresAt = localStorage.getItem("crowdpay_session_expires_at");
+          const nowSeconds = Math.floor(Date.now() / 1000);
+          const isExpiredOrSoon = expiresAt && Number(expiresAt) - nowSeconds < 300;
+
+          if (isExpiredOrSoon && parsedSession.refresh_token) {
+            const refreshed = await tryRefreshToken(parsedSession.refresh_token);
+            if (refreshed) parsedSession = refreshed;
+          }
+
+          setUser(parsedUser);
+          setSession(parsedSession);
+        }
+
+        const storedWallet = localStorage.getItem("crowdpay_wallet");
+        if (storedWallet) {
+          setWalletState(JSON.parse(storedWallet));
+        }
+      } catch (error) {
+        console.error("Error restoring session:", error);
+        localStorage.removeItem("crowdpay_user");
+        localStorage.removeItem("crowdpay_session");
+        localStorage.removeItem("crowdpay_session_expires_at");
+        localStorage.removeItem("crowdpay_wallet");
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error restoring session:", error);
-      // Clear corrupted data
-      localStorage.removeItem("crowdpay_user");
-      localStorage.removeItem("crowdpay_session");
-      localStorage.removeItem("crowdpay_wallet");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    restore();
   }, []);
 
-  // Custom setWallet that also persists to localStorage
   const setWallet = (newWallet: WalletData) => {
     setWalletState(newWallet);
     try {
@@ -117,6 +164,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem("crowdpay_user", JSON.stringify(userData));
     localStorage.setItem("crowdpay_session", JSON.stringify(sessionData));
     localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
+    if (data.session?.expires_at) {
+      localStorage.setItem("crowdpay_session_expires_at", String(data.session.expires_at));
+    }
   };
 
   const signUp = async (email: string, password: string, username: string) => {
@@ -137,7 +187,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       throw new Error(data.error || "Sign up failed");
     }
 
-    // If signup returned a session directly (no email confirmation required), use it
     if (data.session?.access_token) {
       const userData: User = {
         id: data.user.id,
@@ -156,8 +205,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       localStorage.setItem("crowdpay_user", JSON.stringify(userData));
       localStorage.setItem("crowdpay_session", JSON.stringify(sessionData));
       localStorage.setItem("crowdpay_session_timestamp", Date.now().toString());
+      if (data.session?.expires_at) {
+        localStorage.setItem("crowdpay_session_expires_at", String(data.session.expires_at));
+      }
     } else {
-      // Email confirmation required - sign in after signup
       await signIn(email, password);
     }
   };
@@ -182,6 +233,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       localStorage.removeItem("crowdpay_user");
       localStorage.removeItem("crowdpay_session");
       localStorage.removeItem("crowdpay_session_timestamp");
+      localStorage.removeItem("crowdpay_session_expires_at");
       localStorage.removeItem("crowdpay_wallet");
     }
   };
@@ -197,6 +249,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         signIn,
         signUp,
         signOut,
+        refreshSession,
       }}
     >
       {children}
