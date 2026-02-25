@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import logging
 from config import Config
-from routes import campaigns_bp, contributions_bp, auth_bp, payments_bp
+from routes import campaigns_bp, contributions_bp, auth_bp, lnurl_bp
 
 # Configure logging
 logging.basicConfig(
@@ -49,7 +49,7 @@ def create_app():
     app.register_blueprint(campaigns_bp, url_prefix='/api/campaigns')
     app.register_blueprint(contributions_bp, url_prefix='/api/contributions')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(payments_bp, url_prefix='/api/payments')
+    app.register_blueprint(lnurl_bp, url_prefix='/api/lnurl')
 
     # Health check endpoint
     @app.route('/health', methods=['GET'])
@@ -57,8 +57,8 @@ def create_app():
         return jsonify({
             'status': 'healthy',
             'service': 'CrowdPay API',
-            'version': '2.0.0',
-            'payment_provider': 'LNbits'
+            'version': '3.0.0',
+            'payment_provider': 'LNURL (non-custodial)'
         }), 200
 
     # Root endpoint
@@ -66,15 +66,13 @@ def create_app():
     def root():
         return jsonify({
             'message': 'Welcome to CrowdPay API',
-            'version': '2.0.0',
-            'payment_provider': 'LNbits (Lightning Network)',
+            'version': '3.0.0',
+            'payment_provider': 'LNURL-pay (non-custodial Lightning)',
             'endpoints': {
                 'campaigns': '/api/campaigns',
                 'contributions': '/api/contributions',
-                'invoice_create': '/api/invoice/create',
-                'invoice_status': '/api/invoice/status/<payment_hash>',
-                'wallet_balance': '/api/wallet/balance',
-                'webhook': '/api/webhooks/lnbits',
+                'auth': '/api/auth',
+                'lnurl': '/api/lnurl',
                 'health': '/health'
             }
         }), 200
@@ -94,7 +92,7 @@ def create_app():
         logger.error(f"Unhandled exception: {str(error)}")
         return jsonify({'error': 'An unexpected error occurred'}), 500
 
-    logger.info("CrowdPay API initialized successfully with LNbits integration")
+    logger.info("CrowdPay API initialized successfully with LNURL-pay integration")
 
     return app
 

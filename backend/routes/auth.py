@@ -2,7 +2,9 @@ import os
 from flask import Blueprint, request, jsonify
 import logging
 import re
+from datetime import datetime
 from services import get_supabase_client
+from services.lnurl_service import validate_lightning_address as lnurl_validate
 from . import auth_bp
 from pydantic import BaseModel, EmailStr, validator
 
@@ -506,28 +508,47 @@ def update_profile():
         # Allowed fields to update
         allowed_fields = [
             'username', 'full_name', 'lightning_address',
-            'onchain_address', 'wallet_type', 'email_notifications'
+            'onchain_address', 'wallet_type', 'email_notifications',
+            'lightning_address_valid', 'min_receivable_sats',
+            'max_receivable_sats', 'lnurl_callback_url',
+            'lightning_address_validated_at'
         ]
         update_data = {k: v for k, v in data.items() if k in allowed_fields}
 
         if not update_data:
             return jsonify({'error': 'No valid fields to update'}), 400
 
-        # Validate lightning address format if provided
+        # Validate lightning address via LNURL-pay if provided
         lightning_address = update_data.get('lightning_address')
         if lightning_address and lightning_address.strip():
             lightning_address = lightning_address.strip()
-            # Must be user@domain format or start with LNURL
-            if not (re.match(r'^[^@]+@[^@]+\.[^@]+$', lightning_address) or
-                    lightning_address.lower().startswith('lnurl')):
-                return jsonify({
-                    'error': 'Invalid Lightning address. Use user@domain format or LNURL.'
-                }), 400
             update_data['lightning_address'] = lightning_address
+
+            # Validate via LNURL-pay protocol
+            validation = lnurl_validate(lightning_address)
+            if not validation['valid']:
+                return jsonify({
+                    'error': f'Invalid Lightning address: {validation["error"]}'
+                }), 400
+
+            # Save validation metadata
+            update_data['lightning_address_valid'] = True
+            update_data['min_receivable_sats'] = validation.get('min_receivable_sats')
+            update_data['max_receivable_sats'] = validation.get('max_receivable_sats')
+            update_data['lnurl_callback_url'] = validation.get('callback_url')
+            update_data['lightning_address_validated_at'] = datetime.now().isoformat()
+        elif lightning_address is not None:
+            # Clearing the lightning address
+            update_data['lightning_address'] = None
+            update_data['lightning_address_valid'] = False
+            update_data['min_receivable_sats'] = None
+            update_data['max_receivable_sats'] = None
+            update_data['lnurl_callback_url'] = None
+            update_data['lightning_address_validated_at'] = None
 
         # Validate wallet_type if provided
         wallet_type = update_data.get('wallet_type')
-        if wallet_type and wallet_type not in ('internal', 'lightning', 'onchain'):
+        if wallet_type and wallet_type not in ('lightning', 'onchain'):
             return jsonify({'error': 'Invalid wallet type'}), 400
 
         # Update in database

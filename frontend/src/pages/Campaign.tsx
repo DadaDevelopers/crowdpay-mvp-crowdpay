@@ -1,16 +1,11 @@
 /**
  * Campaign Page – Geyser Fund-inspired layout
  *
- * Layout (desktop):
- *   ┌─ LEFT (60%) ──────────────────┐  ┌─ RIGHT (40%) ──────────────┐
- *   │  Photo carousel               │  │  Static contribute widget   │
- *   │  Campaign title / creator     │  │  (always visible)           │
- *   │  Story                        │  │  Contributions feed         │
- *   │  Contributions feed (mobile)  │  └────────────────────────────┘
- *   └───────────────────────────────┘
- *
- * Mobile: contribute widget renders FIRST (order-first class),
- *         then photo, then story.
+ * Features:
+ * - Campaign details display (fetched from backend)
+ * - Progress tracking with real data
+ * - Lightning payment integration via LNURL-pay (non-custodial)
+ * - Social sharing
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -583,9 +578,9 @@ const Campaign = () => {
                 </div>
               )}
 
-              {/* Powered by footer */}
-              <p className="text-xs text-center text-muted-foreground pt-4 pb-8">
-                Powered by CrowdPay · Bitcoin Lightning Network
+              {/* Info Text */}
+              <p className="text-xs text-center text-muted-foreground pt-4">
+                Powered by CrowdPay • Non-custodial Lightning Network fundraising
               </p>
             </div>
 

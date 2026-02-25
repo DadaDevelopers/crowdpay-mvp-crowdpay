@@ -1,14 +1,15 @@
 /**
  * Payment Modal for CrowdPay
  *
- * Lightning-only payment flow using LNbits backend.
+ * Non-custodial Lightning payment flow using LNURL-pay.
+ * Invoices are generated from the campaign creator's wallet.
  * Supports SATs/KES currency toggle with live conversion.
  * M-Pesa tab is kept for UI consistency but marked as "Coming Soon".
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Check, Loader2, Zap, ArrowLeftRight, Bitcoin } from "lucide-react";
+import { Copy, Check, Loader2, Zap, ArrowLeftRight, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog,
@@ -89,12 +90,10 @@ export const PaymentModal = ({
   // Toggle currency mode
   const toggleCurrency = () => {
     if (currencyMode === "KES") {
-      // Switch to SATS: convert current KES to SATS
       const sats = rawAmount > 0 ? kesToSats(rawAmount, kesToSatsRate) : 0;
       setAmount(sats > 0 ? sats.toString() : "");
       setCurrencyMode("SATS");
     } else {
-      // Switch to KES: convert current SATS to KES
       const kes = rawAmount > 0 ? Math.round(satsToKes(rawAmount, kesToSatsRate)) : 0;
       setAmount(kes > 0 ? kes.toString() : "");
       setCurrencyMode("KES");
@@ -114,7 +113,7 @@ export const PaymentModal = ({
       if (data.is_paid) {
         setPaymentState("success");
         toast({
-          title: "Payment Successful!",
+          title: "Payment Confirmed!",
           description: `Thank you for your ${finalSatAmount.toLocaleString()} sats contribution!`,
         });
         onPaymentSuccess?.(contributionId);
@@ -167,6 +166,10 @@ export const PaymentModal = ({
     });
   };
 
+  const openInWallet = () => {
+    window.location.href = `lightning:${invoice}`;
+  };
+
   const createLightningInvoice = async () => {
     if (!campaignId) {
       toast({
@@ -209,13 +212,13 @@ export const PaymentModal = ({
       }
 
       const data = await response.json();
-      setInvoice(data.payment_request);
-      setContributionId(data.contribution.id);
+      setInvoice(data.invoice);
+      setContributionId(data.contribution_id);
       setPaymentState("invoice");
 
       toast({
         title: "Invoice Created",
-        description: "Scan the QR code with your Lightning wallet",
+        description: "Scan the QR code or open in your Lightning wallet",
       });
     } catch (err) {
       console.error("Error creating invoice:", err);
@@ -453,7 +456,7 @@ export const PaymentModal = ({
                 >
                   <div className="flex flex-col items-center space-y-4 p-4 bg-muted rounded-lg">
                     <p className="text-sm text-center text-muted-foreground">
-                      Scan QR code with your Lightning wallet
+                      Scan QR code or open in your Lightning wallet
                     </p>
                     <p className="text-lg font-bold text-bitcoin">
                       {finalSatAmount.toLocaleString()} sats
@@ -461,6 +464,15 @@ export const PaymentModal = ({
                     <div className="bg-white p-4 rounded-xl">
                       <QRCodeSVG value={invoice} size={220} level="H" includeMargin={false} />
                     </div>
+
+                    {/* Open in Wallet button */}
+                    <Button
+                      onClick={openInWallet}
+                      className="w-full bg-bitcoin hover:bg-bitcoin/90 text-bitcoin-foreground gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Open in Wallet
+                    </Button>
 
                     <div className="w-full space-y-2">
                       <Label className="text-xs">Lightning Invoice</Label>
@@ -474,8 +486,11 @@ export const PaymentModal = ({
 
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Waiting for payment...
+                      Waiting for payment confirmation...
                     </div>
+                    <p className="text-xs text-center text-muted-foreground">
+                      Payment will be confirmed by the campaign creator
+                    </p>
                   </div>
 
                   <Button variant="outline" onClick={() => setPaymentState("input")} className="w-full">
@@ -495,7 +510,7 @@ export const PaymentModal = ({
                   <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
                     <Check className="w-8 h-8 text-green-600" />
                   </div>
-                  <h3 className="text-xl font-bold text-green-600">Payment Successful!</h3>
+                  <h3 className="text-xl font-bold text-green-600">Payment Confirmed!</h3>
                   <p className="text-center text-muted-foreground">
                     Thank you for your {finalSatAmount.toLocaleString()} sats contribution!
                   </p>

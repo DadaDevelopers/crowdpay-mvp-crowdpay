@@ -33,7 +33,7 @@ const ProfileSettings = () => {
   // Profile data
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
-  const [bitcoinWalletType, setBitcoinWalletType] = useState("internal");
+  const [bitcoinWalletType, setBitcoinWalletType] = useState("lightning");
   const [lightningAddress, setLightningAddress] = useState("");
   const [onchainAddress, setOnchainAddress] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -54,7 +54,7 @@ const ProfileSettings = () => {
         setFullName(profile.full_name || "");
         setLightningAddress(profile.lightning_address || "");
         setOnchainAddress(profile.onchain_address || "");
-        setBitcoinWalletType(profile.wallet_type || "internal");
+        setBitcoinWalletType(profile.wallet_type || "lightning");
         setEmailNotifications(profile.email_notifications !== false);
       } catch (err) {
         console.error("Error loading profile:", err);
@@ -119,20 +119,31 @@ const ProfileSettings = () => {
         email_notifications: emailNotifications,
       };
 
-      await profileApi.update(session.access_token, updateData);
+      const result = await profileApi.update(session.access_token, updateData);
 
       // Update local wallet context
       setWallet({
         lightningAddress: lightningAddress.trim(),
         onchainAddress: onchainAddress.trim(),
-        walletType: bitcoinWalletType === "lightning" ? "external" : bitcoinWalletType === "internal" ? "blink" : "external",
+        walletType: bitcoinWalletType === "lightning" ? "external" : "external",
         btcBalance: 0,
       });
 
-      toast({
-        title: "Settings saved",
-        description: "Your profile has been updated successfully.",
-      });
+      // Show validation info if lightning address was validated
+      const user = result.user;
+      const minSats = user?.min_receivable_sats as number | undefined;
+      const maxSats = user?.max_receivable_sats as number | undefined;
+      if (lightningAddress.trim() && minSats && maxSats) {
+        toast({
+          title: "Settings saved",
+          description: `Lightning address verified (can receive ${minSats.toLocaleString()} - ${maxSats.toLocaleString()} sats)`,
+        });
+      } else {
+        toast({
+          title: "Settings saved",
+          description: "Your profile has been updated successfully.",
+        });
+      }
     } catch (err) {
       console.error("Error saving profile:", err);
       toast({
@@ -246,26 +257,23 @@ const ProfileSettings = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="internal">
-                      <div className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Built-in CrowdPay Wallet
-                      </div>
-                    </SelectItem>
                     <SelectItem value="lightning">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4" />
-                        External Lightning Wallet
+                        Lightning Wallet
                       </div>
                     </SelectItem>
                     <SelectItem value="onchain">
                       <div className="flex items-center gap-2">
                         <Bitcoin className="h-4 w-4" />
-                        External On-Chain Wallet
+                        On-Chain Wallet
                       </div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  CrowdPay is non-custodial. Payments go directly to your wallet.
+                </p>
               </div>
 
               <div className="space-y-2">

@@ -5,14 +5,14 @@ from pydantic import BaseModel, Field, validator
 
 class Contribution(BaseModel):
     """
-    Contribution model for campaign donations via Lightning Network (LNbits)
+    Contribution model for campaign donations via Lightning Network (LNURL-pay)
 
-    Lightning Payment Flow:
+    Non-Custodial Payment Flow:
     1. User initiates contribution via POST /api/contributions
-    2. Backend creates LNbits invoice and returns payment_request (BOLT11)
+    2. Backend fetches BOLT11 invoice from creator's wallet via LNURL-pay
     3. Frontend displays QR code for user to scan/pay with Lightning wallet
-    4. Backend polls LNbits API OR receives webhook for payment confirmation
-    5. On payment, contribution status updated to 'paid' and campaign amount incremented
+    4. Contributor pays creator directly (platform never holds funds)
+    5. Campaign creator confirms payment in CrowdPay
     """
 
     # Core fields
@@ -20,28 +20,23 @@ class Contribution(BaseModel):
     campaign_id: str = Field(..., min_length=1)
     contributor_name: Optional[str] = Field(None, max_length=100)
     contributor_email: Optional[str] = None
-    # FIX 1: Changed amount to int since satoshis are always integers
     amount: int = Field(..., gt=0)  # Amount in satoshis (always integer)
     currency: str = Field(default="SATS")  # Lightning-only: always SATS
     payment_status: str = Field(default="pending")
 
-    # LNbits Lightning Network payment fields
-    lnbits_payment_hash: Optional[str] = Field(
+    # LNURL-pay Lightning Network payment fields
+    invoice: Optional[str] = Field(
         None,
-        description="Unique payment hash from LNbits - used to identify the payment"
+        description="BOLT11 Lightning invoice string from creator's wallet"
     )
-    lnbits_payment_request: Optional[str] = Field(
+    payment_hash: Optional[str] = Field(
         None,
-        description="BOLT11 Lightning invoice string - scan this as QR code or paste in wallet"
+        description="Payment hash extracted from BOLT11 invoice"
     )
-    lnbits_checking_id: Optional[str] = Field(
+    confirmed_by: Optional[str] = Field(
         None,
-        description="LNbits checking ID - used to poll payment status"
+        description="How payment was confirmed: 'manual', 'webhook', or 'polling'"
     )
-    # lnbits_reference: Optional[str] = Field(
-    #     None,
-    #     description="Internal reference for tracking contributions in our system"
-    # )
 
     # Payment details
     transaction_id: Optional[str] = Field(
@@ -50,7 +45,7 @@ class Contribution(BaseModel):
     )
     message: Optional[str] = Field(None, max_length=500)
     is_anonymous: bool = Field(default=False)
-    
+
     # Timestamps
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -64,7 +59,7 @@ class Contribution(BaseModel):
     @validator('payment_status')
     def validate_payment_status(cls, v):
         """Validate payment status is one of the allowed values"""
-        allowed_statuses = ['pending', 'paid', 'failed', 'expired', 'cancelled']
+        allowed_statuses = ['pending', 'paid', 'completed', 'failed', 'expired', 'cancelled']
         if v not in allowed_statuses:
             raise ValueError(f"Payment status must be one of {allowed_statuses}")
         return v
@@ -78,7 +73,6 @@ class Contribution(BaseModel):
             raise ValueError(f"Currency must be one of {allowed_currencies}")
         return v
 
-    # FIX 2: Updated validator to work with int type
     @validator('amount')
     def validate_amount(cls, v):
         """Validate amount is positive and meets minimum"""
@@ -88,7 +82,6 @@ class Contribution(BaseModel):
             raise ValueError("Minimum contribution is 1 satoshi")
         return v
 
-    # FIX 3: Added validator to coerce amount to int if float is provided
     @validator('amount', pre=True)
     def coerce_amount_to_int(cls, v):
         """Coerce amount to integer (satoshis are always whole numbers)"""
@@ -121,11 +114,11 @@ class Contribution(BaseModel):
         """Create Contribution instance from database dictionary"""
         # Make a copy to avoid modifying original
         data = data.copy()
-        
-        # FIX 4: Ensure amount is int when loading from database
+
+        # Ensure amount is int when loading from database
         if 'amount' in data and not isinstance(data['amount'], int):
             data['amount'] = int(data['amount'])
-        
+
         # Handle datetime strings from database
         if 'created_at' in data and isinstance(data['created_at'], str):
             data['created_at'] = datetime.fromisoformat(data['created_at'].replace('Z', '+00:00'))
@@ -141,20 +134,24 @@ class Contribution(BaseModel):
     # Status check methods
     def is_paid(self) -> bool:
         """Check if contribution has been successfully paid"""
-        return self.payment_status == 'paid'
+        return self.payment_status in ('paid', 'completed')
+
+    def is_completed(self) -> bool:
+        """Check if contribution has been confirmed (alias for is_paid)"""
+        return self.is_paid()
 
     def is_pending(self) -> bool:
         """Check if contribution is awaiting payment"""
         return self.payment_status == 'pending'
-    
+
     def is_cancelled(self) -> bool:
         """Check if contribution has been cancelled"""
         return self.payment_status == 'cancelled'
-    
+
     def is_expired(self) -> bool:
         """Check if Lightning invoice has expired"""
         return self.payment_status == 'expired'
-    
+
     def is_failed(self) -> bool:
         """Check if payment failed"""
         return self.payment_status == 'failed'
@@ -166,26 +163,18 @@ class Contribution(BaseModel):
             return "Anonymous"
         return self.contributor_name or "Anonymous"
 
-    # LNbits payment data getters
+    # Payment data getters
     def get_payment_hash(self) -> Optional[str]:
         """Get the payment hash for this contribution"""
-        return self.lnbits_payment_hash
+        return self.payment_hash
 
     def get_payment_request(self) -> Optional[str]:
         """Get the BOLT11 invoice string (payment request)"""
-        return self.lnbits_payment_request
-    
-    def get_checking_id(self) -> Optional[str]:
-        """Get the checking ID for polling payment status"""
-        return self.lnbits_checking_id
-    
-    def get_reference(self) -> Optional[str]:
-        """Get the internal reference for this contribution"""
-        return self.lnbits_checking_id
+        return self.invoice
 
     class Config:
         """Pydantic configuration"""
-        extra = "ignore"  # Ignore unknown fields from database (e.g. legacy bitnob_* columns)
+        extra = "ignore"  # Ignore unknown fields from database (e.g. legacy lnbits_* columns)
         json_encoders = {
             datetime: lambda v: v.isoformat() if v else None
         }

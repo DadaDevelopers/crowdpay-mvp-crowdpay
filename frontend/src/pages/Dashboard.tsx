@@ -1,15 +1,11 @@
-
-
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { useCampaigns } from "@/contexts/CampaignsContext";
-import { useQuery } from "@tanstack/react-query";
-import { walletApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Bitcoin, Copy, TrendingUp, Link2, Loader2 } from "lucide-react";
+import { Plus, Copy, TrendingUp, Link2, Loader2 } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 
 const Dashboard = () => {
@@ -21,21 +17,8 @@ const Dashboard = () => {
   // Get user's campaigns from context (which fetches from backend)
   const campaigns = getUserCampaigns();
 
-  // Fetch wallet balance from backend
-  const { data: walletData, isLoading: walletLoading } = useQuery({
-    queryKey: ["wallet-balance"],
-    queryFn: async () => {
-      if (!session?.access_token) return null;
-      return walletApi.getBalance(session.access_token);
-    },
-    enabled: !!session?.access_token,
-    staleTime: 30000,
-    retry: false,
-  });
-
   // Calculate totals from campaigns
   const totalRaised = campaigns.reduce((sum, c) => sum + (c.current_amount || 0), 0);
-  const btcBalance = walletData?.balance_btc || 0;
 
   const copyLink = (campaignId: string, title: string) => {
     const link = `${window.location.origin}/c/${campaignId}`;
@@ -48,14 +31,6 @@ const Dashboard = () => {
 
   // Convert sats to BTC
   const satsToBtc = (sats: number) => sats / 100000000;
-
-  // Convert BTC to KES (approximate rate)
-  const btcToKes = (btc: number) => {
-    const rate = 11634460; // Approximate BTC to KES rate
-    return Math.round(btc * rate);
-  };
-
-  const isLoading = campaignsLoading || walletLoading;
 
   return (
     <>
@@ -73,32 +48,8 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          {/* BTC Balance Card */}
-          <Card className="border border-border/50 bg-gradient-to-br from-primary/5 via-card to-card backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Wallet Balance</p>
-                  {walletLoading ? (
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  ) : (
-                    <>
-                      <p className="text-2xl font-bold">{btcBalance.toFixed(8)} BTC</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        = KES {btcToKes(btcBalance).toLocaleString()}
-                      </p>
-                    </>
-                  )}
-                </div>
-                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                  <Bitcoin className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Active Links Card */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          {/* Active Campaigns Card */}
           <Card className="border border-border/50 bg-gradient-to-br from-blue-500/5 via-card to-card backdrop-blur-sm hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-300">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -148,7 +99,7 @@ const Dashboard = () => {
         </div>
 
         {/* Campaigns List */}
-        {isLoading ? (
+        {campaignsLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
@@ -227,7 +178,7 @@ const Dashboard = () => {
 
                       {/* Footer Note */}
                       <p className="text-xs text-muted-foreground">
-                        Contributors can pay via Lightning Network (instant, low fees)
+                        Contributors pay directly to your Lightning wallet (non-custodial)
                       </p>
                     </div>
                   </CardContent>
@@ -249,7 +200,7 @@ const Dashboard = () => {
         {/* Footer */}
         <div className="mt-12 text-center">
           <p className="text-sm text-muted-foreground">
-            CrowdPay - Bitcoin-powered crowdfunding for events, activism & personal milestones.
+            CrowdPay - Non-custodial Bitcoin crowdfunding for events, activism & personal milestones.
           </p>
         </div>
       </div>

@@ -11,7 +11,6 @@ const Notifications = () => {
 
   // Note: Real-time notifications would require:
   // 1. A backend WebSocket or polling endpoint
-  // 2. Or integration with the LNbits webhook system
   // For now, we show helpful information about how notifications work.
 
   return (

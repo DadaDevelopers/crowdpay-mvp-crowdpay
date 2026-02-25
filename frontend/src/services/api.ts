@@ -2,7 +2,7 @@
  * API Service for CrowdPay Frontend
  *
  * Handles all communication with the Flask backend.
- * All Lightning payment operations go through this service.
+ * Uses LNURL-pay for non-custodial Lightning payments.
  */
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -81,39 +81,21 @@ export interface CreateContributionRequest {
   is_anonymous: boolean;
 }
 
-export interface ContributionResponse {
+export interface ContributionCreateResponse {
   message: string;
-  contribution: {
-    id: string;
-    campaign_id: string;
-    amount: number;
-    currency: string;
-    payment_status: string;
-    created_at: string;
-  };
-  payment_request: string;
-  payment_hash: string;
+  contribution_id: string;
+  invoice: string;
+  payment_hash: string | null;
+  amount_sats: number;
+  expires_at: string;
+  callback_url: string | null;
 }
 
 export interface ContributionStatus {
   contribution_id: string;
-  payment_status: "pending" | "paid" | "failed" | "expired" | "cancelled";
+  payment_status: "pending" | "paid" | "completed" | "failed" | "expired" | "cancelled";
   is_paid: boolean;
   paid_at: string | null;
-}
-
-export interface InvoiceResponse {
-  payment_hash: string;
-  payment_request: string;
-  amount: number;
-  memo: string;
-  expiry: number;
-}
-
-export interface WalletBalance {
-  balance_sats: number;
-  balance_btc: number;
-  wallet_id: string;
 }
 
 // API Error class
@@ -158,9 +140,6 @@ async function apiCall<T>(
 
 // Campaign API
 export const campaignApi = {
-  /**
-   * Create a new campaign (requires auth)
-   */
   create: async (
     request: CreateCampaignRequest,
     authToken: string
@@ -172,9 +151,6 @@ export const campaignApi = {
     });
   },
 
-  /**
-   * Get all campaigns with optional filtering
-   */
   list: async (params?: {
     status?: string;
     creator_id?: string;
@@ -193,16 +169,10 @@ export const campaignApi = {
     );
   },
 
-  /**
-   * Get a single campaign by ID with statistics
-   */
   get: async (campaignId: string): Promise<CampaignResponse> => {
     return apiCall<CampaignResponse>(`/api/campaigns/${campaignId}`);
   },
 
-  /**
-   * Update a campaign (requires auth, owner only)
-   */
   update: async (
     campaignId: string,
     data: Partial<CreateCampaignRequest>,
@@ -218,10 +188,6 @@ export const campaignApi = {
     );
   },
 
-  /**
-   * Delete a campaign (requires auth, owner only).
-   * Pass confirm=true to force-delete a campaign that has paid contributions.
-   */
   delete: async (
     campaignId: string,
     authToken: string,
@@ -234,9 +200,6 @@ export const campaignApi = {
     });
   },
 
-  /**
-   * Get contributions for a campaign
-   */
   getContributions: async (
     campaignId: string
   ): Promise<{ contributions: ContributionItem[]; count: number }> => {
@@ -249,12 +212,12 @@ export const campaignApi = {
 // Contribution API
 export const contributionApi = {
   /**
-   * Create a new contribution and generate Lightning invoice
+   * Create a new contribution - generates invoice from creator's wallet via LNURL-pay
    */
   create: async (
     request: CreateContributionRequest
-  ): Promise<ContributionResponse> => {
-    return apiCall<ContributionResponse>("/api/contributions", {
+  ): Promise<ContributionCreateResponse> => {
+    return apiCall<ContributionCreateResponse>("/api/contributions", {
       method: "POST",
       body: JSON.stringify(request),
     });
@@ -264,7 +227,7 @@ export const contributionApi = {
    * Get contribution details
    */
   get: async (contributionId: string) => {
-    return apiCall<{ contribution: ContributionResponse["contribution"] }>(
+    return apiCall<{ contribution: Record<string, unknown> }>(
       `/api/contributions/${contributionId}`
     );
   },
@@ -275,6 +238,22 @@ export const contributionApi = {
   getStatus: async (contributionId: string): Promise<ContributionStatus> => {
     return apiCall<ContributionStatus>(
       `/api/contributions/${contributionId}/status`
+    );
+  },
+
+  /**
+   * Confirm a contribution payment (campaign creator only)
+   */
+  confirm: async (
+    contributionId: string,
+    authToken: string
+  ): Promise<{ message: string; contribution_id: string; amount_sats: number }> => {
+    return apiCall<{ message: string; contribution_id: string; amount_sats: number }>(
+      `/api/contributions/${contributionId}/confirm`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      }
     );
   },
 
@@ -311,7 +290,7 @@ export const contributionApi = {
     if (params.offset) searchParams.set("offset", params.offset.toString());
 
     return apiCall<{
-      contributions: ContributionResponse["contribution"][];
+      contributions: Record<string, unknown>[];
       count: number;
       offset: number;
       limit: number;
@@ -319,80 +298,8 @@ export const contributionApi = {
   },
 };
 
-// Invoice API (standalone invoices) - routes under /api/payments/
-export const invoiceApi = {
-  /**
-   * Create a standalone Lightning invoice
-   */
-  create: async (params: {
-    amount: number;
-    memo?: string;
-    expiry?: number;
-  }): Promise<InvoiceResponse> => {
-    return apiCall<InvoiceResponse>("/api/payments/invoice/create", {
-      method: "POST",
-      body: JSON.stringify(params),
-    });
-  },
-
-  /**
-   * Check invoice payment status
-   */
-  getStatus: async (paymentHash: string) => {
-    return apiCall<{
-      payment_hash: string;
-      paid: boolean;
-      status: string;
-      amount: number;
-      preimage?: string;
-    }>(`/api/payments/invoice/status/${paymentHash}`);
-  },
-
-  /**
-   * Decode a BOLT11 invoice
-   */
-  decode: async (bolt11: string) => {
-    return apiCall<{
-      payment_hash: string;
-      amount_sat: number;
-      description: string;
-      expiry: number;
-    }>("/api/payments/invoice/decode", {
-      method: "POST",
-      body: JSON.stringify({ bolt11 }),
-    });
-  },
-};
-
-// Wallet API (requires auth) - routes under /api/payments/
-export const walletApi = {
-  /**
-   * Get wallet balance
-   */
-  getBalance: async (authToken: string): Promise<WalletBalance> => {
-    return apiCall<WalletBalance>("/api/payments/wallet/balance", {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-  },
-
-  /**
-   * Get recent payments
-   */
-  getPayments: async (authToken: string, limit: number = 20) => {
-    return apiCall<{ payments: unknown[]; count: number }>(
-      `/api/payments/wallet/payments?limit=${limit}`,
-      {
-        headers: { Authorization: `Bearer ${authToken}` },
-      }
-    );
-  },
-};
-
 // Profile API (requires auth)
 export const profileApi = {
-  /**
-   * Get user profile
-   */
   get: async (authToken: string) => {
     return apiCall<{
       user: {
@@ -401,6 +308,9 @@ export const profileApi = {
         username?: string;
         full_name?: string;
         lightning_address?: string;
+        lightning_address_valid?: boolean;
+        min_receivable_sats?: number;
+        max_receivable_sats?: number;
         onchain_address?: string;
         wallet_type?: string;
         email_notifications?: boolean;
@@ -410,16 +320,13 @@ export const profileApi = {
     });
   },
 
-  /**
-   * Update user profile
-   */
   update: async (
     authToken: string,
     data: {
       username?: string;
       full_name?: string;
-      lightning_address?: string;
-      onchain_address?: string;
+      lightning_address?: string | null;
+      onchain_address?: string | null;
       wallet_type?: string;
       email_notifications?: boolean;
     }
@@ -437,9 +344,6 @@ export const profileApi = {
 
 // Health check
 export const healthApi = {
-  /**
-   * Check API health
-   */
   check: async () => {
     return apiCall<{
       status: string;
@@ -448,25 +352,11 @@ export const healthApi = {
       payment_provider: string;
     }>("/health");
   },
-
-  /**
-   * Check payments service health
-   */
-  checkPayments: async () => {
-    return apiCall<{
-      status: string;
-      lnbits_connected: boolean;
-      wallet_id?: string;
-      balance_sats?: number;
-    }>("/api/payments/health");
-  },
 };
 
 export default {
   campaign: campaignApi,
   contribution: contributionApi,
-  invoice: invoiceApi,
-  wallet: walletApi,
   profile: profileApi,
   health: healthApi,
 };

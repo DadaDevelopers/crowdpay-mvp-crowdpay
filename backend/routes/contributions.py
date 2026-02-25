@@ -1,40 +1,35 @@
 """
-Contribution Routes for CrowdPay - Lightning Network Payments via LNbits
+Contribution Routes for CrowdPay - Non-Custodial Lightning Payments via LNURL-pay
 
 This module handles all contribution-related operations:
-- Create contributions with LNbits Lightning invoices
-- Check payment status (polling)
-- Handle LNbits webhooks
+- Create contributions with invoices from creator's wallet (LNURL-pay)
+- Check payment status
+- Creator confirms payments manually
 - Cancel pending contributions
 - List contributions
 
-Payment Flow:
-1. POST /api/contributions - Creates contribution + generates LNbits BOLT11 invoice
-2. Frontend displays QR code with payment_request for user to scan
-3. User pays with any Lightning wallet
-4. GET /api/contributions/<id>/status - Frontend polls for payment confirmation
-5. POST /api/webhooks/lnbits - LNbits webhook notifies backend (alternative to polling)
-6. On payment: contribution marked as 'paid', campaign amount updated
+Non-Custodial Payment Flow:
+1. POST /api/contributions - Fetches invoice from creator's Lightning wallet via LNURL-pay
+2. Frontend displays QR code with invoice for contributor to scan
+3. Contributor pays creator directly (platform never holds funds)
+4. GET /api/contributions/<id>/status - Frontend polls for status
+5. POST /api/contributions/<id>/confirm - Creator confirms payment received
 """
 
 from flask import request, jsonify
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-import uuid
-from datetime import timedelta
 
 from services.auth import optional_auth, require_auth
 from . import contributions_bp
 from models import Contribution
-from services import get_supabase_client, LNbitsService, InvoicePollingService
-from services.lnbits import LNbitsAPIError
-from pydantic import ValidationError
+from services import get_supabase_client
+from services.lnurl_service import get_invoice, generate_callback_token
 from config import Config
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 supabase = get_supabase_client()
-lnbits_service = LNbitsService()
-polling_service = InvoicePollingService()
 
 
 def btc_to_sats(btc: float) -> int:
@@ -46,7 +41,10 @@ def btc_to_sats(btc: float) -> int:
 @optional_auth
 def create_contribution():
     """
-    Create a new contribution and generate Lightning Network invoice
+    Create a new contribution and generate Lightning invoice from creator's wallet.
+
+    Uses LNURL-pay to fetch an invoice directly from the campaign creator's
+    Lightning wallet. The platform never holds funds.
 
     Request Body:
     {
@@ -62,9 +60,11 @@ def create_contribution():
     Response (201 Created):
     {
         "message": "Contribution created successfully",
-        "contribution": {...},
-        "payment_request": "lnbc...",  // BOLT11 invoice to scan/pay
-        "payment_hash": "abc123..."    // For checking payment status
+        "contribution_id": "uuid",
+        "invoice": "lnbc...",
+        "payment_hash": "abc123...",
+        "amount_sats": 1000,
+        "expires_at": "2025-01-01T00:15:00"
     }
     """
     try:
@@ -90,6 +90,19 @@ def create_contribution():
         if campaign.get('status') != 'active':
             return jsonify({'error': 'Campaign is not active'}), 400
 
+        # Look up creator's lightning address
+        creator_id = campaign.get('creator_id')
+        creator_response = supabase.table('users').select(
+            'lightning_address'
+        ).eq('id', creator_id).single().execute()
+
+        if not creator_response.data or not creator_response.data.get('lightning_address'):
+            return jsonify({
+                'error': 'Campaign creator has not set up a Lightning wallet. Please contact the campaign creator.'
+            }), 400
+
+        lightning_address = creator_response.data['lightning_address']
+
         # Convert BTC to SATS if needed
         amount = data.get('amount', 0)
         currency = data.get('currency', 'SATS').upper()
@@ -102,85 +115,75 @@ def create_contribution():
         if amount < 1:
             return jsonify({'error': 'Minimum contribution is 1 satoshi'}), 400
 
-        # FIX 1: Ensure amount is an integer for satoshis
         amount = int(amount)
         data['amount'] = amount
         data['currency'] = currency
 
-        # Handle anonymous contributions before creating model
+        # Handle anonymous contributions
         if data.get('is_anonymous', False):
             data['contributor_name'] = None
             data['contributor_email'] = None
 
-        # Create Lightning invoice via LNbits API FIRST (before database)
-        try:
-            # Generate memo/description for the invoice
-            memo = f"CrowdPay: {campaign.get('title', 'Campaign')[:50]}"
-            if data.get('contributor_name') and not data.get('is_anonymous', False):
-                memo += f" from {data['contributor_name']}"
+        # Generate comment for the invoice
+        comment = f"CrowdPay: {campaign.get('title', 'Campaign')[:50]}"
+        if data.get('contributor_name') and not data.get('is_anonymous', False):
+            comment += f" from {data['contributor_name']}"
 
-            logger.info(f"Creating LNbits invoice for {amount} sats")
+        # Get invoice from creator's wallet via LNURL-pay
+        logger.info(f"Requesting invoice from {lightning_address} for {amount} sats")
+        invoice_result = get_invoice(lightning_address, amount, comment)
 
-            # Call LNbits API to create invoice
-            payment_data = lnbits_service.create_invoice(
-                amount=amount,
-                memo=memo,
-                expiry=3600  # 1 hour expiry
-            )
-            #set auto-expiry for invoices
-            invoice_expires_at = datetime.now() + timedelta(seconds=3600)
-            data['invoice_expires_at'] = invoice_expires_at
-
-            logger.info(f"LNbits invoice created: {payment_data['payment_hash']}")
-
-            # FIX 2: Add LNbits data to the request data BEFORE creating model
-            data['lnbits_payment_hash'] = payment_data['payment_hash']
-            data['lnbits_payment_request'] = payment_data['payment_request']
-            data['lnbits_checking_id'] = payment_data.get('checking_id')
-            # data['lnbits_reference'] = f"contrib_{uuid.uuid4().hex[:12]}"
-            data['payment_status'] = 'pending'
-            
-            # FIX 3: Set timestamps
-            now = datetime.now()
-            data['created_at'] = now
-            data['updated_at'] = now
-
-            # Create contribution model with all data
-            contribution = Contribution(**data)
-
-            # Insert contribution into database
-            contrib_data = contribution.to_dict()
-            contrib_data.pop('id', None)  # Let database generate ID
-
-            response = supabase.table('contributions').insert(contrib_data).execute()
-            
-            if not response.data:
-                return jsonify({'error': 'Failed to create contribution'}), 500
-
-            created_contribution = Contribution.from_dict(response.data[0])
-
-            # Start polling service to check for payment
-            polling_service.start_polling(
-                contribution_id=created_contribution.id,
-                payment_hash=payment_data['payment_hash'],
-                campaign_id=campaign_id
-            )
-
-            logger.info(f"✅ Contribution created: {created_contribution.id}")
-
+        if 'error' in invoice_result:
+            logger.error(f"LNURL invoice error: {invoice_result['error']}")
             return jsonify({
-                'message': 'Contribution created successfully',
-                'contribution': created_contribution.dict(),
-                'payment_request': payment_data['payment_request'],
-                'payment_hash': payment_data['payment_hash']
-            }), 201
-
-        except LNbitsAPIError as e:
-            logger.error(f"❌ LNbits API error: {str(e)}")
-            return jsonify({
-                'error': 'Payment processing error',
-                'details': str(e)
+                'error': 'Failed to generate invoice from creator wallet',
+                'details': invoice_result['error']
             }), 400
+
+        # Set timestamps and invoice data
+        now = datetime.now()
+        expires_at = now + timedelta(minutes=15)
+
+        data['invoice'] = invoice_result['invoice']
+        data['payment_hash'] = invoice_result.get('payment_hash')
+        data['payment_status'] = 'pending'
+        data['created_at'] = now
+        data['updated_at'] = now
+        data['invoice_expires_at'] = expires_at
+
+        # Create contribution model
+        contribution = Contribution(**data)
+
+        # Insert into database
+        contrib_data = contribution.to_dict()
+        contrib_data.pop('id', None)  # Let database generate ID
+
+        response = supabase.table('contributions').insert(contrib_data).execute()
+
+        if not response.data:
+            return jsonify({'error': 'Failed to create contribution'}), 500
+
+        created = response.data[0]
+
+        logger.info(f"Contribution created: {created['id']}")
+
+        # Generate callback URL for automated payment confirmation
+        payment_hash = invoice_result.get('payment_hash')
+        callback_url = None
+        if payment_hash:
+            token = generate_callback_token(payment_hash)
+            base = Config.CALLBACK_BASE_URL.rstrip('/')
+            callback_url = f"{base}/api/lnurl/callback?payment_hash={payment_hash}&token={token}"
+
+        return jsonify({
+            'message': 'Contribution created successfully',
+            'contribution_id': created['id'],
+            'invoice': invoice_result['invoice'],
+            'payment_hash': payment_hash,
+            'amount_sats': amount,
+            'expires_at': expires_at.isoformat(),
+            'callback_url': callback_url,
+        }), 201
 
     except ValidationError as e:
         logger.error(f"Validation error: {e.errors()}")
@@ -189,7 +192,7 @@ def create_contribution():
             'details': e.errors()
         }), 400
     except Exception as e:
-        logger.error(f"❌ Error creating contribution: {str(e)}")
+        logger.error(f"Error creating contribution: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return jsonify({'error': 'Internal server error'}), 500
@@ -226,15 +229,15 @@ def get_contribution(contribution_id):
 @optional_auth
 def check_contribution_status(contribution_id):
     """
-    Check the payment status of a contribution
+    Check the payment status of a contribution.
 
-    Frontend should poll this endpoint every few seconds to check if payment completed.
-    This checks LNbits API directly for the latest payment status.
+    Returns the current DB status. In the LNURL model, status changes
+    when the campaign creator confirms the payment.
 
     Response:
     {
         "contribution_id": "uuid",
-        "payment_status": "pending|paid|failed|expired",
+        "payment_status": "pending|completed|failed|expired",
         "is_paid": true/false,
         "paid_at": "2024-01-01T00:00:00Z" or null
     }
@@ -249,61 +252,6 @@ def check_contribution_status(contribution_id):
 
         contribution = Contribution.from_dict(response.data)
 
-        # If pending and has payment hash, check with LNbits
-        if contribution.is_pending() and contribution.get_payment_hash():
-            try:
-                # Check payment status with LNbits API
-                payment_status = lnbits_service.check_invoice_status(
-                    contribution.get_payment_hash()
-                )
-
-                # Update if payment confirmed
-                if payment_status.get('paid') and not contribution.is_paid():
-                    logger.info(f"⚡ Payment confirmed for contribution: {contribution_id}")
-
-                    # FIX 4: Calculate platform fee correctly
-                    amount = float(contribution.amount)
-                    platform_fee = amount * (Config.PLATFORM_FEE_PERCENT / 100)
-                    creator_amount = amount - platform_fee
-
-                    update_data = {
-                        'payment_status': 'paid',
-                        'paid_at': datetime.now().isoformat(),
-                        'transaction_id': payment_status.get('preimage'),
-                        'updated_at': datetime.now().isoformat()
-                    }
-
-                    supabase.table('contributions').update(update_data).eq(
-                        'id', contribution_id
-                    ).execute()
-
-                    # Update campaign current_amount
-                    campaign_id = contribution.campaign_id
-                    campaign_response = supabase.table('campaigns').select(
-                        'current_amount'
-                    ).eq('id', campaign_id).single().execute()
-
-                    if campaign_response.data:
-                        current = float(campaign_response.data.get('current_amount', 0))
-                        new_amount = current + creator_amount
-                        
-                        supabase.table('campaigns').update({
-                            'current_amount': new_amount,
-                            'updated_at': datetime.now().isoformat()
-                        }).eq('id', campaign_id).execute()
-
-                        logger.info(f"Campaign {campaign_id} updated with {creator_amount} sats")
-
-                    # Stop polling
-                    polling_service.stop_polling(contribution_id)
-
-                    # Update local object
-                    contribution.payment_status = 'paid'
-                    contribution.paid_at = datetime.now()
-
-            except LNbitsAPIError as e:
-                logger.error(f"Error checking LNbits status: {str(e)}")
-
         return jsonify({
             'contribution_id': contribution_id,
             'payment_status': contribution.payment_status,
@@ -313,6 +261,89 @@ def check_contribution_status(contribution_id):
 
     except Exception as e:
         logger.error(f"Error checking contribution status: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@contributions_bp.route('/<contribution_id>/confirm', methods=['POST'])
+@require_auth
+def confirm_contribution(contribution_id):
+    """
+    Confirm a contribution payment (campaign creator only).
+
+    The creator confirms they received the Lightning payment in their wallet.
+    This updates the contribution status and increments the campaign amount.
+
+    Response:
+    {
+        "message": "Contribution confirmed",
+        "contribution_id": "uuid",
+        "amount_sats": 1000
+    }
+    """
+    try:
+        # Fetch the contribution
+        response = supabase.table('contributions').select('*').eq(
+            'id', contribution_id
+        ).single().execute()
+
+        if not response.data:
+            return jsonify({'error': 'Contribution not found'}), 404
+
+        contribution = Contribution.from_dict(response.data)
+
+        # Verify the requesting user is the campaign creator
+        campaign_response = supabase.table('campaigns').select(
+            'creator_id'
+        ).eq('id', contribution.campaign_id).single().execute()
+
+        if not campaign_response.data:
+            return jsonify({'error': 'Campaign not found'}), 404
+
+        if campaign_response.data['creator_id'] != request.user['id']:
+            return jsonify({'error': 'Only the campaign creator can confirm contributions'}), 403
+
+        # Can only confirm pending contributions
+        if not contribution.is_pending():
+            return jsonify({
+                'error': f'Cannot confirm contribution with status: {contribution.payment_status}'
+            }), 400
+
+        now = datetime.now()
+
+        # Update contribution status
+        supabase.table('contributions').update({
+            'payment_status': 'completed',
+            'paid_at': now.isoformat(),
+            'confirmed_by': 'manual',
+            'updated_at': now.isoformat()
+        }).eq('id', contribution_id).execute()
+
+        # Update campaign current_amount (full amount, no platform fee deduction)
+        campaign_full = supabase.table('campaigns').select(
+            'current_amount'
+        ).eq('id', contribution.campaign_id).single().execute()
+
+        if campaign_full.data:
+            current = float(campaign_full.data.get('current_amount', 0))
+            new_amount = current + contribution.amount
+
+            supabase.table('campaigns').update({
+                'current_amount': new_amount,
+                'updated_at': now.isoformat()
+            }).eq('id', contribution.campaign_id).execute()
+
+            logger.info(f"Campaign {contribution.campaign_id} updated: +{contribution.amount} sats")
+
+        logger.info(f"Contribution confirmed: {contribution_id}")
+
+        return jsonify({
+            'message': 'Contribution confirmed',
+            'contribution_id': contribution_id,
+            'amount_sats': contribution.amount
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error confirming contribution: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -335,14 +366,6 @@ def cancel_contribution(contribution_id):
             return jsonify({
                 'error': 'Can only cancel pending contributions'
             }), 400
-
-        # Lightning invoices expire automatically after expiry time
-        # We just stop polling and mark as cancelled
-        if contribution.get_payment_hash():
-            logger.info(f"Lightning invoice will expire: {contribution.get_payment_hash()}")
-
-        # Stop polling
-        polling_service.stop_polling(contribution_id)
 
         # Update contribution status to cancelled
         supabase.table('contributions').update({
@@ -367,7 +390,7 @@ def get_contributions():
 
     Query parameters:
     - campaign_id: Filter by campaign
-    - payment_status: Filter by status (pending, paid, etc.)
+    - payment_status: Filter by status (pending, completed, etc.)
     - limit: Max results (default 50)
     - offset: Pagination offset (default 0)
     """
@@ -409,115 +432,4 @@ def get_contributions():
 
     except Exception as e:
         logger.error(f"Error fetching contributions: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-
-@contributions_bp.route('/webhook', methods=['POST'])
-def lnbits_webhook():
-    """
-    Webhook endpoint for LNbits payment notifications
-
-    LNbits will POST to this endpoint when a payment is received.
-    This is an alternative to polling - more efficient for production.
-
-    Expected payload from LNbits:
-    {
-        "payment_hash": "abc123...",
-        "payment_request": "lnbc...",
-        "amount": 1000,
-        "memo": "...",
-        "paid": true,
-        "preimage": "xyz..."
-    }
-    """
-    try:
-        # Get raw payload for signature verification
-        payload = request.get_data(as_text=True)
-        signature = request.headers.get('X-LNbits-Signature', '')
-
-        # Verify webhook signature if present (recommended for security)
-        if signature and not lnbits_service.verify_webhook_signature(payload, signature):
-            logger.warning("⚠️ Invalid webhook signature")
-            # Continue anyway as signature verification is optional
-
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-
-        payment_hash = data.get('payment_hash')
-        is_paid = data.get('paid', False)
-
-        if not payment_hash:
-            return jsonify({'error': 'Payment hash required'}), 400
-
-        # Only process if payment is confirmed
-        if not is_paid:
-            logger.info(f"Webhook received for unpaid invoice: {payment_hash}")
-            return jsonify({'message': 'Payment not yet confirmed'}), 200
-
-        logger.info(f"⚡ Webhook: Payment received for {payment_hash}")
-
-        # Find contribution by payment hash
-        response = supabase.table('contributions').select('*').eq(
-            'lnbits_payment_hash', payment_hash
-        ).execute()
-
-        if not response.data:
-            logger.warning(f"⚠️ No contribution found for payment_hash: {payment_hash}")
-            return jsonify({'message': 'Contribution not found'}), 404
-
-        contribution_data = response.data[0]
-        contribution_id = contribution_data['id']
-        campaign_id = contribution_data['campaign_id']
-
-        # Check if already processed
-        if contribution_data['payment_status'] == 'paid':
-            logger.info(f"Contribution {contribution_id} already marked as paid")
-            return jsonify({'message': 'Already processed'}), 200
-
-        # FIX 5: Calculate platform fee correctly from amount
-        amount = float(contribution_data['amount'])
-        platform_fee = amount * (Config.PLATFORM_FEE_PERCENT / 100)
-        creator_amount = amount - platform_fee
-
-        # Update contribution status to paid
-        update_data = {
-            'payment_status': 'paid',
-            'paid_at': datetime.now().isoformat(),
-            'transaction_id': data.get('preimage'),
-            'updated_at': datetime.now().isoformat()
-        }
-
-        supabase.table('contributions').update(update_data).eq(
-            'id', contribution_id
-        ).execute()
-
-        # Update campaign amount with platform fee deduction
-        campaign_response = supabase.table('campaigns').select(
-            'current_amount'
-        ).eq('id', campaign_id).single().execute()
-
-        if campaign_response.data:
-            current = float(campaign_response.data.get('current_amount', 0))
-            new_amount = current + creator_amount
-            
-            supabase.table('campaigns').update({
-                'current_amount': new_amount,
-                'updated_at': datetime.now().isoformat()
-            }).eq('id', campaign_id).execute()
-
-            logger.info(f"✅ Campaign {campaign_id} updated: +{creator_amount} sats")
-
-        # Stop polling service
-        polling_service.stop_polling(contribution_id)
-
-        logger.info(f"✅ Webhook processed: Contribution {contribution_id} marked as paid")
-
-        return jsonify({'message': 'Webhook processed successfully'}), 200
-
-    except Exception as e:
-        logger.error(f"❌ Error processing webhook: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
         return jsonify({'error': 'Internal server error'}), 500

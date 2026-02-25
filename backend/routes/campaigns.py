@@ -19,10 +19,20 @@ def create_campaign():
     """Create a new campaign"""
     try:
         data = request.get_json()
-        
+
         if not data:
             return jsonify({'error': 'No data provided'}), 400
-        
+
+        # Check if user has a Lightning address set
+        user_resp = supabase.table('users').select(
+            'lightning_address'
+        ).eq('id', request.user['id']).single().execute()
+
+        if not user_resp.data or not user_resp.data.get('lightning_address'):
+            return jsonify({
+                'error': 'Please add your Lightning address in Settings before creating a campaign'
+            }), 400
+
         # Add creator_id from authenticated user
         data['creator_id'] = request.user['id']
         data['creator_email'] = request.user['email']
@@ -119,7 +129,7 @@ def get_campaign(campaign_id):
         
         total_contributions = len(contrib_response.data)
         paid_contributions = sum(
-            1 for c in contrib_response.data if c['payment_status'] == 'paid'
+            1 for c in contrib_response.data if c['payment_status'] in ('paid', 'completed')
         )
         
         return jsonify({
@@ -219,7 +229,7 @@ def delete_campaign(campaign_id):
         ).eq('campaign_id', campaign_id).execute()
 
         contributions = contrib_response.data or []
-        paid_contributions = [c for c in contributions if c.get('payment_status') == 'paid']
+        paid_contributions = [c for c in contributions if c.get('payment_status') in ('paid', 'completed')]
         pending_contributions = [c for c in contributions if c.get('payment_status') == 'pending']
 
         # Block deletion if there are active/pending contributions

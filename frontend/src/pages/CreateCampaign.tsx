@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/MockAuthContext";
 import { useCampaigns } from "@/contexts/CampaignsContext";
 import { useBtcRate, kesToSats } from "@/hooks/useBtcRate";
+import { profileApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,6 +52,24 @@ const CreateCampaign = () => {
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [storyCharCount, setStoryCharCount] = useState(0);
+  const [hasLightningAddress, setHasLightningAddress] = useState<boolean | null>(null);
+
+  // Check if user has a Lightning address configured
+  useEffect(() => {
+    const checkLightningAddress = async () => {
+      if (!session?.access_token) {
+        setHasLightningAddress(false);
+        return;
+      }
+      try {
+        const data = await profileApi.get(session.access_token);
+        setHasLightningAddress(!!data.user.lightning_address);
+      } catch {
+        setHasLightningAddress(false);
+      }
+    };
+    checkLightningAddress();
+  }, [session?.access_token]);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -194,6 +213,15 @@ const CreateCampaign = () => {
             <p className="text-muted-foreground">Set up your fundraising event with full customization</p>
           </div>
         </div>
+        {hasLightningAddress === false && (
+          <div className="max-w-6xl mx-auto mb-6 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Set up your Lightning address in{" "}
+              <Link to="/settings" className="underline font-bold">Settings</Link>{" "}
+              to receive payments directly to your wallet before creating a campaign.
+            </p>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
           {/* ── Form Section ── */}
@@ -449,9 +477,9 @@ Write about what inspired this campaign, how contributions will be used, and why
                   <Button type="button" variant="outline" onClick={() => navigate("/app")} disabled={loading} className="flex-1">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={loading} className="flex-1">
+                  <Button type="submit" disabled={loading || hasLightningAddress === false} className="flex-1">
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {loading ? "Creating..." : "Create Event"}
+                    {loading ? "Creating..." : hasLightningAddress === false ? "Lightning Address Required" : "Create Event"}
                   </Button>
                 </div>
               </form>
